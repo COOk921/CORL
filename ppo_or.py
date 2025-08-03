@@ -14,7 +14,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-
+import warnings
+warnings.filterwarnings("ignore")
 
 import pdb
 
@@ -81,7 +82,7 @@ def parse_args():
         help="the target KL divergence threshold")
     parser.add_argument("--n-traj", type=int, default=20,
         help="number of trajectories in a vectorized sub-environment")
-    parser.add_argument("--n-test", type=int, default=1000,
+    parser.add_argument("--n-test", type=int, default=300,
         help="how many test instance")
     parser.add_argument("--multi-greedy-inference", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="whether to use multiple trajectory greedy inference")
@@ -152,9 +153,12 @@ if __name__ == "__main__":
         id=args.env_id,
         entry_point=args.env_entry_point,
     )
-
+    
+   
     # training env setup
     envs = SyncVectorEnv([make_env(args.env_id, args.seed + i) for i in range(args.num_envs)])
+    
+
     # evaluation env setup: 1.) from a fix dataset, or 2.) generated with seed
    # 1.) use test instance from a fix dataset
     # test_envs = SyncVectorEnv(
@@ -227,6 +231,7 @@ if __name__ == "__main__":
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
         next_obs = envs.reset()
+       
         encoder_state = agent.backbone.encode(next_obs)
         next_done = torch.zeros(args.num_envs, args.n_traj).to(device)
         r = []

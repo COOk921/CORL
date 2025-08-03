@@ -4,6 +4,45 @@ from gym import spaces
 
 from .container_data import ContainerDataset
 
+import pickle
+import pdb
+
+_DATA_CACHE = None
+
+root_dir = "data/container_data.pkl"
+
+def get_data(max_nodes,data_path="data/container_data.pkl",  mode = 'train'):
+
+    global _DATA_CACHE
+    selected_columns = ['from_bay', 'from_col', 'from_layer', 'to_bay', 'to_col', 'to_layer']
+    if _DATA_CACHE is None:
+        print("--- Loading data from file (will happen only ONCE) ---")
+        with open(data_path, 'rb') as f:
+            data = pickle.load(f)
+
+        data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
+
+        _DATA_CACHE = data
+        keys = list(data.keys())
+    else:
+        keys = list(_DATA_CACHE.keys())
+    
+    if mode == 'train':
+        key = np.random.default_rng().choice(keys)
+    else:
+        pass
+
+    df = _DATA_CACHE[tuple(key)]
+    nodes = df[selected_columns].to_numpy()[:max_nodes]
+
+    if len(nodes) < max_nodes:
+        nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
+    
+    #nodes = (nodes - nodes.min(axis=0)) / (nodes.max(axis=0) - nodes.min(axis=0) + 1e-8)
+    return nodes
+
+
+
 def assign_env_config(self, kwargs):
     """
     Set self.key = value, for each key in kwargs
@@ -11,12 +50,18 @@ def assign_env_config(self, kwargs):
     for key, value in kwargs.items():
         setattr(self, key, value)
 
+def read_pkl(file_path):
+    with open(file_path, 'rb') as f:
+        data = pickle.load(f)
+    return data
+
+
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
-        self.max_nodes = 50
-        self.n_traj = 50
-        self.dim = 10  # Default feature dimension, override via kwargs
-        self.eval_data = False
+        self.max_nodes = 20
+        self.n_traj = 20
+        self.dim = 6  # Default feature dimension, override via kwargs
+        self.eval_data = True
         self.eval_partition = "test"
         self.eval_data_idx = 0
         assign_env_config(self, kwargs)
@@ -32,6 +77,7 @@ class ContainerVectorEnv(gym.Env):
         self.observation_space = spaces.Dict(obs_dict)
         self.action_space = spaces.MultiDiscrete([self.max_nodes] * self.n_traj)
         self.reward_space = None
+        
 
         self.reset()
 
@@ -55,11 +101,12 @@ class ContainerVectorEnv(gym.Env):
 
     def _load_orders(self):
         # Load container features, assuming dataset provides (max_nodes, dim) arrays
-        self.nodes = np.array(ContainerDataset[self.eval_partition, self.max_nodes, self.eval_data_idx])
-
+        #self.nodes = ContainerDataset().get_next_data(max_nodes = self.max_nodes, mode='train')
+        self.nodes = get_data(max_nodes = self.max_nodes, mode='train')
+        
+        
+        
     def _generate_orders(self):
-
-    
         # centers = np.random.rand(2, self.dim)        
         # cluster_sizes = np.full(2, self.max_nodes // 2)
         # cluster_sizes[:self.max_nodes % 2] += 1
@@ -74,7 +121,12 @@ class ContainerVectorEnv(gym.Env):
         
         # self.nodes = np.vstack(node_clusters)
 
-        self.nodes = np.random.rand(self.max_nodes, self.dim)
+        #self.nodes = np.random.rand(self.max_nodes, self.dim)
+        #self.nodes = self.dataset.get_next_data(max_nodes = self.max_nodes, mode='train')
+        
+        self.nodes = np.random.rand( self.max_nodes, self.dim)
+        
+      
 
     def step(self, action):
         self._go_to(action)
@@ -128,3 +180,4 @@ class ContainerVectorEnv(gym.Env):
         action_mask = ~self.visited
         action_mask[np.arange(self.n_traj), self.first] |= self.is_all_visited()
         return action_mask
+

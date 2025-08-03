@@ -3,6 +3,8 @@ import numpy as np
 from gym import spaces
 
 from .tsp_data import TSPDataset
+import pdb
+
 
 
 def assign_env_config(self, kwargs):
@@ -12,9 +14,9 @@ def assign_env_config(self, kwargs):
     for key, value in kwargs.items():
         setattr(self, key, value)
 
-
 def dist(loc1, loc2):
     return ((loc1[:, 0] - loc2[:, 0]) ** 2 + (loc1[:, 1] - loc2[:, 1]) ** 2) ** 0.5
+
 
 
 class TSPVectorEnv(gym.Env):
@@ -39,6 +41,8 @@ class TSPVectorEnv(gym.Env):
         self.action_space = spaces.MultiDiscrete([self.max_nodes] * self.n_traj)
         self.reward_space = None
 
+      
+
         self.reset()
 
     def seed(self, seed):
@@ -54,6 +58,7 @@ class TSPVectorEnv(gym.Env):
             self._load_orders()
         else:
             self._generate_orders()
+           
         self.state = self._update_state()
         self.info = {}
         self.done = False
