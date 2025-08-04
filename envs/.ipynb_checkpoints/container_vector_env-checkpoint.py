@@ -11,10 +11,12 @@ _DATA_CACHE = None
 
 root_dir = "data/container_data.pkl"
 
-def get_data(max_nodes,data_path="./data/container_data.pkl",  mode = 'train'):
+def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 'train'):
 
     global _DATA_CACHE
-    selected_columns = ['from_bay', 'from_col', 'from_layer', 'to_bay', 'to_col', 'to_layer']
+    selected_columns = ['from_bay', 'from_col', 'from_layer',  #'to_bay', 'to_col', 'to_layer'
+        'Unit Weight (kg)','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard'  ]
+
     if _DATA_CACHE is None:
         print("--- Loading data from file (will happen only ONCE) ---")
         with open(data_path, 'rb') as f:
@@ -38,7 +40,7 @@ def get_data(max_nodes,data_path="./data/container_data.pkl",  mode = 'train'):
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
     
-    nodes = (nodes - nodes.min(axis=0)) / (nodes.max(axis=0) - nodes.min(axis=0) + 1e-8)
+    # nodes = (nodes - nodes.min(axis=0)) / (nodes.max(axis=0) - nodes.min(axis=0) + 1e-8)
     return nodes
 
 
@@ -60,7 +62,7 @@ class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
         self.max_nodes = 20
         self.n_traj = 20
-        self.dim = 6  # Default feature dimension, override via kwargs
+        self.dim = 9  # Default feature dimension, override via kwargs
         self.eval_data = True
         self.eval_partition = "test"
         self.eval_data_idx = 0
@@ -104,6 +106,7 @@ class ContainerVectorEnv(gym.Env):
         #self.nodes = ContainerDataset().get_next_data(max_nodes = self.max_nodes, mode='train')
         self.nodes = get_data(max_nodes = self.max_nodes, mode='train')
         
+      
         
         
     def _generate_orders(self):

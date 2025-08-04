@@ -14,8 +14,8 @@ root_dir = "data/container_data.pkl"
 def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 'train'):
 
     global _DATA_CACHE
-    selected_columns = ['from_bay', 'from_col', 'from_layer', 'to_bay', 'to_col', 'to_layer','Unit Weight (kg)',
-        'Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard'  ]
+    selected_columns = ['from_bay', 'from_col', 'from_layer',  #'to_bay', 'to_col', 'to_layer'
+        'Unit Weight (kg)','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard'  ]
 
     if _DATA_CACHE is None:
         print("--- Loading data from file (will happen only ONCE) ---")
@@ -62,7 +62,7 @@ class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
         self.max_nodes = 20
         self.n_traj = 20
-        self.dim = 12  # Default feature dimension, override via kwargs
+        self.dim = 9  # Default feature dimension, override via kwargs
         self.eval_data = True
         self.eval_partition = "test"
         self.eval_data_idx = 0
