@@ -26,7 +26,7 @@ def AutoEmbedding(problem_name, config):
 class ContainerEmbedding(nn.Module):
     def __init__(self, embedding_dim):
         super(ContainerEmbedding, self).__init__()
-        node_dim = 6  
+        node_dim = 12  
         self.context_dim = embedding_dim * 2   
         self.init_embed = nn.Linear(node_dim, embedding_dim)
 
