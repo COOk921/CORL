@@ -1,21 +1,27 @@
 import gym
 import numpy as np
 from gym import spaces
+import torch
 
 from .container_data import ContainerDataset
-
+from discriminator.model import Discriminator
+import time
 import pickle
 import pdb
 
 _DATA_CACHE = None
+_MODEL_CACHE = None
+
+
 
 root_dir = "data/container_data.pkl"
+model_path = "discriminator/model/discriminator.pth"
 
 def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 'train'):
 
     global _DATA_CACHE
-    selected_columns = ['from_bay', 'from_col', 'from_layer',  #'to_bay', 'to_col', 'to_layer'
-        'Unit Weight (kg)','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard'  ]
+    selected_columns = ['Unit Weight (kg)','from_bay', 'from_col', 'from_layer',  'to_bay', 'to_col', 
+    'to_layer','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard'  ]
 
     if _DATA_CACHE is None:
         print("--- Loading data from file (will happen only ONCE) ---")
@@ -35,13 +41,41 @@ def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 't
         pass
 
     df = _DATA_CACHE[tuple(key)]
+
+   
     nodes = df[selected_columns].to_numpy()[:max_nodes]
 
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
     
-    # nodes = (nodes - nodes.min(axis=0)) / (nodes.max(axis=0) - nodes.min(axis=0) + 1e-8)
+   
     return nodes
+
+def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
+
+   
+    global _MODEL_CACHE
+    if _MODEL_CACHE is None:
+        print("--- Loading model from file (will happen only ONCE) ---")
+        
+        model_for_inference = Discriminator(
+            input_dim = input_dim,
+            hidden_dim = hidden_dim,
+        ).to(device)
+        model_for_inference.load_state_dict(torch.load(model_path))
+
+        _MODEL_CACHE = model_for_inference
+   
+
+  
+    dest_node = torch.from_numpy(dest_node).float().to(device)
+    prev_node = torch.from_numpy(prev_node).float().to(device)
+    similarity_score = _MODEL_CACHE(dest_node, prev_node)
+    similarity_score = similarity_score.squeeze().detach().cpu().numpy()
+    
+
+    return similarity_score
+
 
 
 
@@ -62,11 +96,14 @@ class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
         self.max_nodes = 20
         self.n_traj = 20
-        self.dim = 9  # Default feature dimension, override via kwargs
+        self.dim = 12  # Default feature dimension, override via kwargs
+        self.hidden_dim = 256
         self.eval_data = True
         self.eval_partition = "test"
         self.eval_data_idx = 0
         assign_env_config(self, kwargs)
+        
+        self.device = 'cpu'  #torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         obs_dict = {
             "observations": spaces.Box(low=0, high=1, shape=(self.max_nodes, self.dim)),
@@ -106,8 +143,6 @@ class ContainerVectorEnv(gym.Env):
         #self.nodes = ContainerDataset().get_next_data(max_nodes = self.max_nodes, mode='train')
         self.nodes = get_data(max_nodes = self.max_nodes, mode='train')
         
-      
-        
         
     def _generate_orders(self):
         # centers = np.random.rand(2, self.dim)        
@@ -146,7 +181,9 @@ class ContainerVectorEnv(gym.Env):
 
         if self.num_steps != 0:
             prev_node = self.nodes[self.last]  # (n_traj, dim)
-            self.reward =  self.similarity(dest_node, prev_node) # -self.cost(dest_node, prev_node)    
+            #self.reward =  self.similarity(dest_node, prev_node) # -self.cost(dest_node, prev_node)   
+            self.reward = get_discriminator(dest_node,prev_node,self.dim,self.hidden_dim,self.device)
+        
         else:
             self.reward = np.zeros(self.n_traj)
             self.first = destination

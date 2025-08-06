@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
+import time
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -250,7 +251,11 @@ if __name__ == "__main__":
             actions[step] = action
             logprobs[step] = logprob.view(args.num_envs, args.n_traj)
             # TRY NOT TO MODIFY: execute the game and log data.
+
+            
             next_obs, reward, done, info = envs.step(action.cpu().numpy())
+            pdb.set_trace()
+
             rewards[step] = torch.tensor(reward).to(device)
             next_obs, next_done = next_obs, torch.Tensor(done).to(device)
 

@@ -30,6 +30,12 @@ for key, df in data.items():
     #print(f"\nProcessing data locally for key: {key}")
     processed_df = pd.DataFrame(index=df.index)
     
+
+    if 'Unit Nbr' in df.columns:
+        processed_df['Unit Nbr'] = df['Unit Nbr']
+    if 'Time Completed' in df.columns:
+        processed_df['Time Completed'] = df['Time Completed']
+    
     # --- 2a: 在当前DataFrame上学习并转换连续特征 ---
     # !!! Scaler在每次循环中都重新创建和学习 !!!
     local_scaler = StandardScaler()
@@ -72,5 +78,3 @@ print("File reloaded successfully.")
 print(f"Data for key '{key1}' in reloaded file:")
 print(reloaded_data[key1].head())
 print(reloaded_data[key1].shape)
-
-
