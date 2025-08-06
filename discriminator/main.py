@@ -10,17 +10,19 @@ from model import Discriminator
 from train import train, evaluate
 from data_sampling import load_and_process_data
 
+import pdb
+
 CONFIG = {
     "input_dim": 12,         # 每个节点的特征维度
     "hidden_dim": 256,         # 模型隐藏层维度
     "heuristic_dim": 10,       # (可选) 启发式方法产生的特征维度
     "learning_rate": 0.001,
-    "epochs": 100,
+    "epochs": 50,
     "batch_size": 64,
     "window_size": 3,          # 定义“邻近”的窗口大小
     "num_neg_samples": 6,      # 每个正样本对应生成的负样本数量
     "test_size": 0.3,          # 划分训练集和验证集的比例
-    "num_samples": 25000,        # 采样数据数量
+    "num_samples": 10000,        # 采样数据数量
 
     "root_path": "./data/processed_container_data.pkl",
     "save_path": "./discriminator/model/discriminator.pth"
@@ -30,11 +32,10 @@ CONFIG = {
 if __name__ == '__main__':
  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     # --- 1. 生成模拟数据 ---
     print("Load data...")
 
-    all_features = load_and_process_data(CONFIG["root_path"], num_samples = CONFIG["num_samples"])
+    all_features,positions = load_and_process_data(CONFIG["root_path"], num_samples = CONFIG["num_samples"])
     print("all_features:", all_features.shape)
      
     # --- 2. 生成所有的样本对 ---
@@ -51,18 +52,26 @@ if __name__ == '__main__':
             all_pairs.append((all_features[i], all_features[j]))
             all_labels.append(1)
 
+        # positions[idx] >= i
+        idx = np.searchsorted(positions, i)
+
         for _ in range(CONFIG["num_neg_samples"]):
-            while True:
-                k = np.random.randint(0, num_nodes)
+            while True:        
+                #k = np.random.randint(positions[idx], positions[idx+1])    
+                k = np.random.randint(i-10, i+10)
+
                 if abs(i - k) > CONFIG["window_size"]:
+                    k = np.random.randint(0, num_nodes) if k >= num_nodes else k
                     all_pairs.append((all_features[i], all_features[k]))
                     all_labels.append(0)
                     break
+                if positions[idx+1] - positions[idx] <= CONFIG["window_size"]:
+                    break
+                
     
     print(f"Generated {len(all_pairs)} total pairs.")
     print(f"Generated {len(all_pairs)} total pairs. positive: {sum(all_labels)}, negative: {len(all_labels) - sum(all_labels)}")
     
-
     X = np.array([list(pair) for pair in all_pairs])
     y = np.array(all_labels)
 

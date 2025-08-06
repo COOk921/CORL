@@ -1,8 +1,6 @@
 import torch
 from sklearn.metrics import accuracy_score, roc_auc_score
 
-
-
 def train(model, dataloader, optimizer, criterion, device):
     model.train()
     total_loss = 0
@@ -46,7 +44,10 @@ def evaluate(model, dataloader, criterion, device):
             outputs = model(node1, node2)
             loss = criterion(outputs, labels.unsqueeze(1))
             total_loss += loss.item()
+
             
+
+
             # 收集预测和标签用于计算评估指标
             preds = torch.round(outputs).squeeze()
             all_preds.extend(preds.cpu().numpy())

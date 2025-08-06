@@ -44,20 +44,19 @@ print("Model loaded successfully!")
 
 with torch.no_grad():
     
-    data = load_and_process_data(CONFIG["root_path"], num_samples=30)
+    data,_ = load_and_process_data(CONFIG["root_path"], num_samples=500)
     
-    nodes_1 = torch.from_numpy(data[:10]).float().to(device) #[0,10]
-    nodes_2 = torch.from_numpy(data[10:20]).float().to(device) #[10,20]
+    nodes_1 = torch.from_numpy(data[0:20]).float().to(device) #[0,10]
+    nodes_2 = torch.from_numpy(data[20:21]).float().to(device) #[10,20]
 
-    node_0_feat = torch.from_numpy(data[0]).float().view(-1, CONFIG["input_dim"]).to(device)
-    node_10_feat = torch.from_numpy(data[10]).float().view(-1, CONFIG["input_dim"]).to(device)
+    node_0_feat = torch.from_numpy(data[10]).float().view(-1, CONFIG["input_dim"]).to(device)
+    node_10_feat = torch.from_numpy(data[11]).float().view(-1, CONFIG["input_dim"]).to(device)
 
-    node_5_feat = torch.from_numpy(data[1]).float().view(-1, CONFIG["input_dim"]).to(device)
-    node_15_feat = torch.from_numpy(data[11]).float().view(-1, CONFIG["input_dim"]).to(device)
+    node_5_feat = torch.from_numpy(data[20]).float().view(-1, CONFIG["input_dim"]).to(device)
+    node_15_feat = torch.from_numpy(data[21]).float().view(-1, CONFIG["input_dim"]).to(device)
 
 
-    import pdb
-    pdb.set_trace()
+   
     similarity_score = model_for_inference(nodes_1, nodes_2)
     print(similarity_score)
 
