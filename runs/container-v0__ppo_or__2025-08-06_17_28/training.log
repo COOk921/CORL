@@ -1,0 +1,252 @@
+completed_episodes=512
+[Train] global_step=10752
+avg_episodic_return=16.41943359375
+max_episodic_return=18.265625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=21504
+avg_episodic_return=16.269336700439453
+max_episodic_return=18.166015625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=32256
+avg_episodic_return=16.386425018310547
+max_episodic_return=18.25390625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=43008
+avg_episodic_return=16.065624237060547
+max_episodic_return=18.056640625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=53760
+avg_episodic_return=16.058984756469727
+max_episodic_return=17.994140625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=64512
+avg_episodic_return=15.895605087280273
+max_episodic_return=17.90234375
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=75264
+avg_episodic_return=16.146778106689453
+max_episodic_return=18.072265625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=86016
+avg_episodic_return=16.128517150878906
+max_episodic_return=18.083984375
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=96768
+avg_episodic_return=15.900781631469727
+max_episodic_return=17.908203125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=107520
+avg_episodic_return=15.969335556030273
+max_episodic_return=17.896484375
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=118272
+avg_episodic_return=16.014060974121094
+max_episodic_return=17.96875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=129024
+avg_episodic_return=16.033985137939453
+max_episodic_return=17.998046875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=139776
+avg_episodic_return=16.36767578125
+max_episodic_return=18.248046875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=150528
+avg_episodic_return=16.3173828125
+max_episodic_return=18.244140625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=161280
+avg_episodic_return=16.339649200439453
+max_episodic_return=18.232421875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=172032
+avg_episodic_return=16.49609375
+max_episodic_return=18.265625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=182784
+avg_episodic_return=16.4775390625
+max_episodic_return=18.240234375
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=193536
+avg_episodic_return=16.300195693969727
+max_episodic_return=18.21875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=204288
+avg_episodic_return=16.364452362060547
+max_episodic_return=18.248046875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=215040
+avg_episodic_return=16.382421493530273
+max_episodic_return=18.314453125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=225792
+avg_episodic_return=16.445703506469727
+max_episodic_return=18.333984375
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=236544
+avg_episodic_return=16.0234375
+max_episodic_return=18.095703125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=247296
+avg_episodic_return=16.274023056030273
+max_episodic_return=18.265625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=258048
+avg_episodic_return=16.125585556030273
+max_episodic_return=18.080078125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=268800
+avg_episodic_return=16.043163299560547
+max_episodic_return=17.994140625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=279552
+avg_episodic_return=16.316308975219727
+max_episodic_return=18.259765625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=290304
+avg_episodic_return=16.140430450439453
+max_episodic_return=18.06640625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=301056
+avg_episodic_return=16.136131286621094
+max_episodic_return=18.0703125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=311808
+avg_episodic_return=15.783007621765137
+max_episodic_return=17.869140625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=322560
+avg_episodic_return=16.195701599121094
+max_episodic_return=18.212890625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=333312
+avg_episodic_return=16.43701171875
+max_episodic_return=18.3203125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=344064
+avg_episodic_return=16.551855087280273
+max_episodic_return=18.365234375
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=354816
+avg_episodic_return=16.085058212280273
+max_episodic_return=18.05078125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=365568
+avg_episodic_return=16.38310432434082
+max_episodic_return=18.326171875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=376320
+avg_episodic_return=16.348339080810547
+max_episodic_return=18.275390625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=387072
+avg_episodic_return=16.380760192871094
+max_episodic_return=18.27734375
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=397824
+avg_episodic_return=16.661033630371094
+max_episodic_return=18.509765625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=408576
+avg_episodic_return=16.542186737060547
+max_episodic_return=18.455078125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=419328
+avg_episodic_return=17.01318359375
+max_episodic_return=18.689453125
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=430080
+avg_episodic_return=16.411815643310547
+max_episodic_return=18.3671875
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=440832
+avg_episodic_return=16.75146484375
+max_episodic_return=18.541015625
+avg_episodic_length=21.0
+
+completed_episodes=512
+[Train] global_step=451584
+avg_episodic_return=16.846385955810547
+max_episodic_return=18.642578125
+avg_episodic_length=21.0
+

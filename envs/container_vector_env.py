@@ -71,6 +71,7 @@ def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_pa
     dest_node = torch.from_numpy(dest_node).float().to(device)
     prev_node = torch.from_numpy(prev_node).float().to(device)
     similarity_score = _MODEL_CACHE(dest_node, prev_node)
+    # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
     similarity_score = similarity_score.squeeze().detach().cpu().numpy()
     
 
