@@ -27,10 +27,11 @@ class Discriminator(nn.Module):
         feature_diff = torch.abs(node1_feat - node2_feat)
         #combined = feature_diff
         feature_prod = node1_feat * node2_feat
-        combined = torch.cat([feature_diff, feature_prod], dim=1)
+        combined = torch.cat([feature_diff, feature_prod], dim=-1)
 
         # 如果使用启发式特征，在这里拼接
         if self.use_heuristics and heuristic_feat is not None:
              combined = torch.cat([combined, heuristic_feat], dim=1)
-            
+
+       
         return self.network(combined)

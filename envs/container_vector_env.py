@@ -53,7 +53,6 @@ def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 't
 
 def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
 
-   
     global _MODEL_CACHE
     if _MODEL_CACHE is None:
         print("--- Loading model from file (will happen only ONCE) ---")
@@ -70,6 +69,9 @@ def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_pa
   
     dest_node = torch.from_numpy(dest_node).float().to(device)
     prev_node = torch.from_numpy(prev_node).float().to(device)
+
+   
+
     similarity_score = _MODEL_CACHE(dest_node, prev_node)
     # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
     similarity_score = similarity_score.squeeze().detach().cpu().numpy()
@@ -104,7 +106,7 @@ class ContainerVectorEnv(gym.Env):
         self.eval_data_idx = 0
         assign_env_config(self, kwargs)
         
-        self.device = 'cpu'  #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         obs_dict = {
             "observations": spaces.Box(low=0, high=1, shape=(self.max_nodes, self.dim)),
@@ -168,29 +170,35 @@ class ContainerVectorEnv(gym.Env):
       
 
     def step(self, action):
+
         self._go_to(action)
         self.num_steps += 1
         self.state = self._update_state()
         self.done = (action == self.first) & self.is_all_visited()
-        return self.state, self.reward, self.done, self.info
+
+        self.info
+
+        return self.state, self.reward, self.done, self.info # 
 
     def is_all_visited(self):
         return self.visited.all(axis=1)
 
     def _go_to(self, destination):
-        dest_node = self.nodes[destination]  # (n_traj, dim)
-
-        if self.num_steps != 0:
-            prev_node = self.nodes[self.last]  # (n_traj, dim)
-            #self.reward =  self.similarity(dest_node, prev_node) # -self.cost(dest_node, prev_node)   
-            self.reward = get_discriminator(dest_node,prev_node,self.dim,self.hidden_dim,self.device)
+        self.dest_node = self.nodes[destination]  # (n_traj, dim)
+        self.prev_node = self.nodes[self.last]  # (n_traj, dim)
         
+        """ reward 在文件 syncVectorEnvPomo.py 中计算 """
+        if self.num_steps != 0:
+            #self.reward =  self.similarity(self.dest_node, self.prev_node) # -self.cost(dest_node, prev_node)   
+            self.reward = 0 #get_discriminator(self.dest_node, self.prev_node, self.dim, self.hidden_dim, self.device)
         else:
             self.reward = np.zeros(self.n_traj)
             self.first = destination
 
         self.last = destination
         self.visited[np.arange(self.n_traj), destination] = True
+    
+
 
     def similarity(self, x, y):
         """
