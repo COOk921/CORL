@@ -5,7 +5,7 @@ import numpy as np
 from gym.vector.utils import concatenate, create_empty_array, iterate
 from gym.vector.vector_env import VectorEnv
 from envs.container_vector_env import _MODEL_CACHE,get_discriminator
-
+import pdb
 
 
 __all__ = ["SyncVectorEnv"]
@@ -61,6 +61,7 @@ class SyncVectorEnv(VectorEnv):
         self.dim = self.envs[0].dim
         self.hidden_dim = self.envs[0].hidden_dim
         self.device = self.envs[0].device
+        
 
         if (observation_space is None) or (action_space is None):
             observation_space = observation_space or self.envs[0].observation_space
@@ -78,6 +79,7 @@ class SyncVectorEnv(VectorEnv):
         self._rewards = np.zeros((self.num_envs, self.n_traj), dtype=np.float64)
         self._dones = np.zeros((self.num_envs, self.n_traj), dtype=np.bool_)
         self._actions = None
+        
 
     def seed(self, seed=None):
         super().seed(seed=seed)
@@ -135,28 +137,34 @@ class SyncVectorEnv(VectorEnv):
         self._actions = iterate(self.action_space, actions)
 
     def step_wait(self):
-        import pdb
-       
+    
         observations, infos = [], []
         dest_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.int32)
         prev_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.int32)
 
+        
         for i, (env, action) in enumerate(zip(self.envs, self._actions)):
-
+            
             observation, _ , self._dones[i], info  = env.step(action) # self._rewards[i]
-
             dest_node[i] = env.dest_node
             prev_node[i] = env.prev_node
+            num_steps = self.envs[i].num_steps
            
             observations.append(observation)
             infos.append(info)
 
-        self._rewards = get_discriminator(dest_node,prev_node, self.dim, self.hidden_dim, self.device)
-       
+        # [512,20]
+        
+        if num_steps - 1 != 0:
+            self._rewards = get_discriminator(dest_node,prev_node, self.dim, self.hidden_dim, self.device)
+        else:
+            self._rewards = np.zeros((self.num_envs, self.n_traj), dtype=np.float64)
+
+
         self.observations = concatenate(
             self.single_observation_space, observations, self.observations
         )
-
+      
         return (
             deepcopy(self.observations) if self.copy else self.observations,
             np.copy(self._rewards),

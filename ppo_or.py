@@ -100,7 +100,7 @@ from wrappers.recordWrapper import RecordEpisodeStatistics
 def make_env(env_id, seed, cfg={}):
     def thunk():
         env = gym.make(env_id, **cfg)
-        env = RecordEpisodeStatistics(env)
+        # env = RecordEpisodeStatistics(env)
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
@@ -236,6 +236,10 @@ if __name__ == "__main__":
         encoder_state = agent.backbone.encode(next_obs)
         next_done = torch.zeros(args.num_envs, args.n_traj).to(device)
         r = []
+
+        episode_returns = np.zeros((args.num_envs, args.n_traj),dtype=np.float32)
+        episode_lengths = np.zeros( args.num_envs , dtype=np.int32)
+
         for step in range(0, args.num_steps):
             global_step += 1 * args.num_envs
             obs[step] = next_obs
@@ -252,23 +256,26 @@ if __name__ == "__main__":
             logprobs[step] = logprob.view(args.num_envs, args.n_traj)
             # TRY NOT TO MODIFY: execute the game and log data.
 
-            
             next_obs, reward, done, info = envs.step(action.cpu().numpy())
-           
-
             rewards[step] = torch.tensor(reward).to(device)
             next_obs, next_done = next_obs, torch.Tensor(done).to(device)
 
+            episode_returns += reward
+            episode_lengths += 1 
+            
             for item in info:
                 if "episode" in item.keys():
                     r.append(item)
-        
-        # 确保日志目录存在
-        
+           
+        # [512,20]
+        avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))
+        max_episodic_return = np.mean(np.max(episode_returns, axis=1))
+        avg_episodic_length = np.mean(episode_lengths)
+
+        # avg_episodic_return = np.mean([rollout["episode"]["r"].mean() for rollout in r]) # env_num
+        # max_episodic_return = np.mean([rollout["episode"]["r"].max() for rollout in r])
+        # avg_episodic_length = np.mean([rollout["episode"]["l"].mean() for rollout in r])
         logging.info(f"completed_episodes={len(r)}")
-        avg_episodic_return = np.mean([rollout["episode"]["r"].mean() for rollout in r])
-        max_episodic_return = np.mean([rollout["episode"]["r"].max() for rollout in r])
-        avg_episodic_length = np.mean([rollout["episode"]["l"].mean() for rollout in r])
         logging.info(
             f"[Train] global_step={global_step}\n"
             f"avg_episodic_return={avg_episodic_return}\n"

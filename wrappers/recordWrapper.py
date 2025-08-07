@@ -4,7 +4,7 @@ from collections import deque
 import gym
 
 import numpy as np
-
+import pdb
 
 class RecordEpisodeStatistics(gym.Wrapper):
     def __init__(self, env, deque_size=100):
@@ -28,6 +28,7 @@ class RecordEpisodeStatistics(gym.Wrapper):
 
     def step(self, action):
         observations, rewards, dones, infos = super().step(action)
+
         self.episode_returns += rewards
         self.episode_lengths += 1
         if not self.is_vector_env:
