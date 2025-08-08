@@ -51,7 +51,7 @@ def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 't
    
     return nodes
 
-def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
+def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
 
     global _MODEL_CACHE
     if _MODEL_CACHE is None:
@@ -65,19 +65,49 @@ def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_pa
 
         _MODEL_CACHE = model_for_inference
    
+    _MODEL_CACHE.eval()
 
-  
-    dest_node = torch.from_numpy(dest_node).float().to(device)
-    prev_node = torch.from_numpy(prev_node).float().to(device)
+    with torch.no_grad():
+        dest_node = torch.from_numpy(dest_node).float().to(device)
+        prev_node = torch.from_numpy(prev_node).float().to(device)
 
-   
-
-    similarity_score = _MODEL_CACHE(dest_node, prev_node)
-    # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
-    similarity_score = similarity_score.squeeze().detach().cpu().numpy()
+        similarity_score = _MODEL_CACHE(dest_node, prev_node)
+        # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
+        similarity_score = similarity_score.squeeze().detach().cpu().numpy()
     
 
     return similarity_score
+
+def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
+    dot_product = np.sum(x * y, axis=-1)  # Shape: [batch, n_traj]
+    # 计算 x 和 y 的 L2 范数
+    norm_x = np.linalg.norm(x, axis=-1)  # Shape: [batch, n_traj]
+    norm_y = np.linalg.norm(y, axis=-1)  # Shape: [batch, n_traj]
+    
+    # 创建填充掩码，标记 norm_x 或 norm_y 为 0 的位置
+    pad_mask = (norm_x == 0) | (norm_y == 0)  # Shape: [batch, n_traj]
+    
+    # 初始化输出数组，填充 pad_value
+    sim = np.full_like(norm_x, pad_value)  # Shape: [batch, n_traj]
+    
+    # 有效掩码：norm_x 和 norm_y 都不为 0 的位置
+    valid_mask = ~pad_mask  # Shape: [batch, n_traj]
+    
+    # 如果存在有效位置，计算余弦相似度
+    if np.any(valid_mask):
+        # 提取有效位置的点积和范数
+        dot_product_valid = dot_product[valid_mask]  # Shape: [num_valid]
+        norm_x_valid = norm_x[valid_mask]  # Shape: [num_valid]
+        norm_y_valid = norm_y[valid_mask]  # Shape: [num_valid]
+        
+        # 计算余弦相似度
+        cos_sim = dot_product_valid / (norm_x_valid * norm_y_valid + eps)
+        cos_sim = np.clip(cos_sim, -1.0, 1.0)
+        
+        # 映射到 [0, 1]
+        sim[valid_mask] = (cos_sim + 1) / 2
+    
+    return sim
 
 
 
@@ -186,11 +216,11 @@ class ContainerVectorEnv(gym.Env):
     def _go_to(self, destination):
         self.dest_node = self.nodes[destination]  # (n_traj, dim)
         self.prev_node = self.nodes[self.last]  # (n_traj, dim)
-        
+      
         """ reward 在文件 syncVectorEnvPomo.py 中计算 """
         if self.num_steps != 0:
-            #self.reward =  self.similarity(self.dest_node, self.prev_node) # -self.cost(dest_node, prev_node)   
-            self.reward = 0 #get_discriminator(self.dest_node, self.prev_node, self.dim, self.hidden_dim, self.device)
+            # self.reward =  self.similarity(self.dest_node, self.prev_node) # -self.cost(dest_node, prev_node)   
+            self.reward = 0  #get_discriminator_reward(self.dest_node, self.prev_node, self.dim, self.hidden_dim, self.device)
         else:
             self.reward = np.zeros(self.n_traj)
             self.first = destination
@@ -200,15 +230,26 @@ class ContainerVectorEnv(gym.Env):
     
 
 
-    def similarity(self, x, y):
-        """
-        Compute similarity between two feature vectors: 1 - (sum of squared diffs / dim)
-        Returns value in [0, 1], where 1 is identical and 0 is maximally different
-        """
-        diff = x - y  # (n_traj, dim)
-        d2 = np.sum(diff ** 2, axis=-1)  # (n_traj,)
-        sim = 1 - (d2 / self.dim)
+    def similarity(self,x, y, eps=1e-8,pad_value=0.0):
+      
+        dot_product = np.sum(x * y, axis=-1)  # Shape: (n_traj,)
+        
+        norm_x = np.linalg.norm(x, axis=-1)  # Shape: (n_traj,)
+        norm_y = np.linalg.norm(y, axis=-1)  # Shape: (n_traj,)
+                
+        pad_mask = (norm_x == 0) | (norm_y == 0)
+        sim = np.full_like(norm_x, pad_value)
+
+        valid_mask = ~pad_mask
+        if np.any(valid_mask):
+
+            dot_product = np.sum(x[valid_mask] * y[valid_mask], axis=-1)
+            cos_sim = dot_product / (norm_x[valid_mask] * norm_y[valid_mask] + eps)
+            cos_sim = np.clip(cos_sim, -1.0, 1.0)
+            sim[valid_mask] = (cos_sim + 1) / 2
+
         return sim
+
 
     def cost(self, loc1, loc2):
         # 

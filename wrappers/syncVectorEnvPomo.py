@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 import numpy as np
 from gym.vector.utils import concatenate, create_empty_array, iterate
 from gym.vector.vector_env import VectorEnv
-from envs.container_vector_env import _MODEL_CACHE,get_discriminator
+from envs.container_vector_env import _MODEL_CACHE,get_discriminator_reward,similarity_reward
 import pdb
 
 
@@ -139,26 +139,37 @@ class SyncVectorEnv(VectorEnv):
     def step_wait(self):
     
         observations, infos = [], []
-        dest_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.int32)
-        prev_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.int32)
+        dest_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.float32)
+        prev_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.float32)
 
         
         for i, (env, action) in enumerate(zip(self.envs, self._actions)):
             
-            observation, _ , self._dones[i], info  = env.step(action) # self._rewards[i]
+            observation, _ , self._dones[i], info  = env.step(action) # 
             dest_node[i] = env.dest_node
-            prev_node[i] = env.prev_node
+            prev_node[i] =  env.prev_node
             num_steps = self.envs[i].num_steps
-           
+          
             observations.append(observation)
             infos.append(info)
-
-        # [512,20]
         
+        """ 
+        余弦相似度: [0, 1] 值越大 相似度越高
+        判别器奖励: [0, 1] 值越大 奖励越高
+
+        缩放奖励到[-1, 0]
+        """
+       
+        # [512,20]
         if num_steps - 1 != 0:
-            self._rewards = get_discriminator(dest_node,prev_node, self.dim, self.hidden_dim, self.device)
+            discriminator_reward = get_discriminator_reward(dest_node,prev_node, self.dim, self.hidden_dim, self.device) - 1 
+            sim_reward = similarity_reward(dest_node,prev_node) - 1 
+           
+            self._rewards = (sim_reward + discriminator_reward)/ 2   #0.5*(self._rewards - 1) + 0.5*discriminator_reward
+
         else:
             self._rewards = np.zeros((self.num_envs, self.n_traj), dtype=np.float64)
+       
 
 
         self.observations = concatenate(

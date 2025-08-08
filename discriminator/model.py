@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim, hidden_dim, heuristic_dim=0):
+    def __init__(self, input_dim, hidden_dim, heuristic_dim = 0):
         super().__init__()
         self.use_heuristics = heuristic_dim > 0
         
@@ -32,6 +32,5 @@ class Discriminator(nn.Module):
         # 如果使用启发式特征，在这里拼接
         if self.use_heuristics and heuristic_feat is not None:
              combined = torch.cat([combined, heuristic_feat], dim=1)
-
        
         return self.network(combined)

@@ -15,9 +15,9 @@ import pdb
 CONFIG = {
     "input_dim": 12,         # 每个节点的特征维度
     "hidden_dim": 256,         # 模型隐藏层维度
-    "heuristic_dim": 10,       # (可选) 启发式方法产生的特征维度
+    "heuristic_dim": 0,       # (可选) 启发式方法产生的特征维度
     "learning_rate": 0.001,
-    "epochs": 50,
+    "epochs": 30,
     "batch_size": 64,
     "window_size": 3,          # 定义“邻近”的窗口大小
     "num_neg_samples": 6,      # 每个正样本对应生成的负样本数量
@@ -59,7 +59,6 @@ if __name__ == '__main__':
             while True:        
                 #k = np.random.randint(positions[idx], positions[idx+1])    
                 k = np.random.randint(i-10, i+10)
-
                 if abs(i - k) > CONFIG["window_size"]:
                     k = np.random.randint(0, num_nodes) if k >= num_nodes else k
                     all_pairs.append((all_features[i], all_features[k]))
@@ -81,8 +80,7 @@ if __name__ == '__main__':
         shuffle=True, 
         stratify=y  
     )
-    # --- 4. 创建简单的数据集和数据加载器 ---
-    # PyTorch的TensorDataset非常适合这种已经处理好的数据
+
     train_dataset = TensorDataset(torch.from_numpy(X_train[:, 0, :]), torch.from_numpy(X_train[:, 1, :]), torch.from_numpy(y_train).float())
     val_dataset = TensorDataset(torch.from_numpy(X_val[:, 0, :]), torch.from_numpy(X_val[:, 1, :]), torch.from_numpy(y_val).float())
 
@@ -94,7 +92,7 @@ if __name__ == '__main__':
     model = Discriminator(
         input_dim=CONFIG["input_dim"],
         hidden_dim=CONFIG["hidden_dim"],
-        # heuristic_dim=CONFIG["heuristic_dim"] # 如果要用启发式方法，取消这行注释
+        heuristic_dim=CONFIG["heuristic_dim"] # 如果要用启发式方法，取消这行注释
     ).to(device)
     
     criterion = nn.BCELoss() # 二元交叉熵损失
