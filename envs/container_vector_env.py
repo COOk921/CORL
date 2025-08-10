@@ -15,13 +15,14 @@ _MODEL_CACHE = None
 
 
 root_dir = "data/container_data.pkl"
-model_path = "discriminator/model/discriminator.pth"
+model_path = "./discriminator/model/discriminator.pth"
 
-def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 'train'):
+def get_data(max_nodes,data_path="./data/processed_container_data.pkl",  mode = 'train'):
 
     global _DATA_CACHE
-    selected_columns = ['Unit Weight (kg)','from_bay', 'from_col', 'from_layer',  'to_bay', 'to_col', 
-    'to_layer','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard'  ]
+    selected_columns = ['Unit Weight (kg)','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 
+    'from_yard', 'from_bay', 'from_col', 'from_layer', 
+    'to_bay', 'to_col', 'to_layer']
 
     if _DATA_CACHE is None:
         print("--- Loading data from file (will happen only ONCE) ---")
@@ -42,7 +43,7 @@ def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 't
 
     df = _DATA_CACHE[tuple(key)]
 
-   
+    
     nodes = df[selected_columns].to_numpy()[:max_nodes]
 
     if len(nodes) < max_nodes:

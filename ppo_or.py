@@ -18,6 +18,10 @@ import time
 import warnings
 warnings.filterwarnings("ignore")
 
+from utils import calculation_metrics
+
+
+
 import pdb
 
 def parse_args():
@@ -83,7 +87,7 @@ def parse_args():
         help="the target KL divergence threshold")
     parser.add_argument("--n-traj", type=int, default=20,
         help="number of trajectories in a vectorized sub-environment")
-    parser.add_argument("--n-test", type=int, default=500,
+    parser.add_argument("--n-test", type=int, default=1,
         help="how many test instance")
     parser.add_argument("--multi-greedy-inference", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="whether to use multiple trajectory greedy inference")
@@ -235,7 +239,6 @@ if __name__ == "__main__":
        
         encoder_state = agent.backbone.encode(next_obs)
         next_done = torch.zeros(args.num_envs, args.n_traj).to(device)
-        r = []
 
         episode_returns = np.zeros((args.num_envs, args.n_traj),dtype=np.float32)
         episode_lengths = np.zeros( args.num_envs , dtype=np.int32)
@@ -262,10 +265,6 @@ if __name__ == "__main__":
 
             episode_returns += reward
             episode_lengths += 1 
-            
-            for item in info:
-                if "episode" in item.keys():
-                    r.append(item)
            
         # [512,20]
         avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))
@@ -275,7 +274,7 @@ if __name__ == "__main__":
         # avg_episodic_return = np.mean([rollout["episode"]["r"].mean() for rollout in r]) # env_num
         # max_episodic_return = np.mean([rollout["episode"]["r"].max() for rollout in r])
         # avg_episodic_length = np.mean([rollout["episode"]["l"].mean() for rollout in r])
-        logging.info(f"completed_episodes={len(r)}")
+     
         logging.info(
             f"[Train] global_step={global_step}\n"
             f"avg_episodic_return={avg_episodic_return}\n"
@@ -403,33 +402,53 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         # print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-        if update % 1000 == 0 or update == num_updates:
-            torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
         if update % 100 == 0 or update == num_updates:
+            torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
+        if update % 2 == 0 or update == num_updates:
             agent.eval()
             test_obs = test_envs.reset()
-            r = []
+
+            trajectories = []
+            episode_returns = 0
+            episode_lengths = 0
+
             for step in range(0, args.num_steps):
                 # ALGO LOGIC: action logic
                 with torch.no_grad():
                     action, logits = agent(test_obs)
                 if step == 0:
                     if args.multi_greedy_inference:
-                        if args.problem == 'tsp':
+                        if args.problem == 'container':
+                            action = torch.arange(args.n_traj).repeat(args.n_test, 1)
+                        elif args.problem == 'tsp':
                             action = torch.arange(args.n_traj).repeat(args.n_test, 1)
                         elif args.problem == 'cvrp':
                             action = torch.arange(1, args.n_traj + 1).repeat(args.n_test, 1)
                 # TRY NOT TO MODIFY: execute the game and log data.
                 test_obs, _, _, test_info = test_envs.step(action.cpu().numpy())
 
-                for item in test_info:
-                    if "episode" in item.keys():
-                        r.append(item)
+                trajectories.append(action.cpu().numpy())
 
-            avg_episodic_return = np.mean([rollout["episode"]["r"].mean() for rollout in r])
-            max_episodic_return = np.mean([rollout["episode"]["r"].max() for rollout in r])
-            avg_episodic_length = np.mean([rollout["episode"]["l"].mean() for rollout in r])
-            print(f"[test] episodic_return={max_episodic_return}")
+                episode_returns += reward
+                episode_lengths += 1 
+            
+            resulting_traj = np.array(trajectories)[:,0,0]
+            rehandle_rate = calculation_metrics(resulting_traj, test_obs['observations'][0])
+
+            avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))
+            max_episodic_return = np.mean(np.max(episode_returns, axis=1))
+            avg_episodic_length = np.mean(episode_lengths)
+            
+            logging.info(
+                f"[test] episodic_return={max_episodic_return}\n"
+                f"avg_episodic_return={avg_episodic_return}\n"
+                f"max_episodic_return={max_episodic_return}\n"
+                f"avg_episodic_length={avg_episodic_length}\n"
+                f"rehandle_rate={rehandle_rate}\n"
+            )
+            logging.info("")
+
+
             writer.add_scalar("test/episodic_return_mean", avg_episodic_return, global_step)
             writer.add_scalar("test/episodic_return_max", max_episodic_return, global_step)
             writer.add_scalar("test/episodic_length", avg_episodic_length, global_step)
