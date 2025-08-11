@@ -17,12 +17,11 @@ _MODEL_CACHE = None
 root_dir = "data/container_data.pkl"
 model_path = "./discriminator/model/discriminator.pth"
 
+
 def get_data(max_nodes,data_path="./data/processed_container_data.pkl",  mode = 'train'):
 
     global _DATA_CACHE
-    selected_columns = ['Unit Weight (kg)','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 
-    'from_yard', 'from_bay', 'from_col', 'from_layer', 
-    'to_bay', 'to_col', 'to_layer']
+    selected_columns = ['Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer']
 
     if _DATA_CACHE is None:
         print("--- Loading data from file (will happen only ONCE) ---")
@@ -128,9 +127,9 @@ def read_pkl(file_path):
 
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
-        self.max_nodes = 20
-        self.n_traj = 20
-        self.dim = 12  # Default feature dimension, override via kwargs
+        self.max_nodes = 100
+        self.n_traj = 100
+        self.dim = 6  # Default feature dimension, override via kwargs
         self.hidden_dim = 256
         self.eval_data = True
         self.eval_partition = "test"

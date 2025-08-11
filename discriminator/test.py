@@ -13,7 +13,7 @@ from data_sampling import load_and_process_data
 import pdb
 
 CONFIG = {
-    "input_dim": 12,         # 每个节点的特征维度
+    "input_dim": 6,         # 每个节点的特征维度
     "hidden_dim": 256,         # 模型隐藏层维度
     "heuristic_dim": 10,       # (可选) 启发式方法产生的特征维度
     "learning_rate": 0.001,

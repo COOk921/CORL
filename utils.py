@@ -97,14 +97,14 @@ def compute_rehandle_rate(from_layer, from_col, from_bay, from_yard, denominator
 
 
 def calculation_metrics(sequence, feature):
-    to_layer = feature[sequence, -1] 
-    to_col = feature[sequence, -2]
-    to_bay = feature[sequence, -3]
+    # to_layer = feature[sequence, -1] 
+    # to_col = feature[sequence, -2]
+    # to_bay = feature[sequence, -3]
 
-    from_layer = feature[sequence, -4]
-    from_col = feature[sequence, -5]
-    from_bay = feature[sequence, -6]
-    from_yard = feature[sequence, -7]
+    from_layer = feature[sequence, -1]
+    from_col = feature[sequence, -2]
+    from_bay = feature[sequence, -3]
+    from_yard = feature[sequence, -4]
 
     rehandle, denom, rate = compute_rehandle_rate(from_layer, from_col, from_bay, from_yard)
 

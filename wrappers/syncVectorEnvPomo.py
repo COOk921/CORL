@@ -165,7 +165,7 @@ class SyncVectorEnv(VectorEnv):
             discriminator_reward = get_discriminator_reward(dest_node,prev_node, self.dim, self.hidden_dim, self.device) - 1 
             sim_reward = similarity_reward(dest_node,prev_node) - 1 
            
-            self._rewards = (sim_reward + discriminator_reward)/ 2   #0.5*(self._rewards - 1) + 0.5*discriminator_reward
+            self._rewards = (sim_reward + discriminator_reward)/ 2 
 
         else:
             self._rewards = np.zeros((self.num_envs, self.n_traj), dtype=np.float64)

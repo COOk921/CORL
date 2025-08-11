@@ -15,13 +15,13 @@ _MODEL_CACHE = None
 
 
 root_dir = "data/container_data.pkl"
-model_path = "discriminator/model/discriminator.pth"
+model_path = "./discriminator/model/discriminator.pth"
 
-def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 'train'):
+
+def get_data(max_nodes,data_path="./data/processed_container_data.pkl",  mode = 'train'):
 
     global _DATA_CACHE
-    selected_columns = ['Unit Weight (kg)','from_bay', 'from_col', 'from_layer',  'to_bay', 'to_col', 
-    'to_layer','Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard'  ]
+    selected_columns = ['Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer']
 
     if _DATA_CACHE is None:
         print("--- Loading data from file (will happen only ONCE) ---")
@@ -42,7 +42,7 @@ def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 't
 
     df = _DATA_CACHE[tuple(key)]
 
-   
+    
     nodes = df[selected_columns].to_numpy()[:max_nodes]
 
     if len(nodes) < max_nodes:
@@ -51,9 +51,8 @@ def get_data(max_nodes,data_path="data/processed_container_data.pkl",  mode = 't
    
     return nodes
 
-def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
+def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
 
-   
     global _MODEL_CACHE
     if _MODEL_CACHE is None:
         print("--- Loading model from file (will happen only ONCE) ---")
@@ -66,16 +65,49 @@ def get_discriminator(dest_node,prev_node,input_dim, hidden_dim,device ,model_pa
 
         _MODEL_CACHE = model_for_inference
    
+    _MODEL_CACHE.eval()
 
-  
-    dest_node = torch.from_numpy(dest_node).float().to(device)
-    prev_node = torch.from_numpy(prev_node).float().to(device)
-    similarity_score = _MODEL_CACHE(dest_node, prev_node)
-    # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
-    similarity_score = similarity_score.squeeze().detach().cpu().numpy()
+    with torch.no_grad():
+        dest_node = torch.from_numpy(dest_node).float().to(device)
+        prev_node = torch.from_numpy(prev_node).float().to(device)
+
+        similarity_score = _MODEL_CACHE(dest_node, prev_node)
+        # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
+        similarity_score = similarity_score.squeeze().detach().cpu().numpy()
     
 
     return similarity_score
+
+def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
+    dot_product = np.sum(x * y, axis=-1)  # Shape: [batch, n_traj]
+    # 计算 x 和 y 的 L2 范数
+    norm_x = np.linalg.norm(x, axis=-1)  # Shape: [batch, n_traj]
+    norm_y = np.linalg.norm(y, axis=-1)  # Shape: [batch, n_traj]
+    
+    # 创建填充掩码，标记 norm_x 或 norm_y 为 0 的位置
+    pad_mask = (norm_x == 0) | (norm_y == 0)  # Shape: [batch, n_traj]
+    
+    # 初始化输出数组，填充 pad_value
+    sim = np.full_like(norm_x, pad_value)  # Shape: [batch, n_traj]
+    
+    # 有效掩码：norm_x 和 norm_y 都不为 0 的位置
+    valid_mask = ~pad_mask  # Shape: [batch, n_traj]
+    
+    # 如果存在有效位置，计算余弦相似度
+    if np.any(valid_mask):
+        # 提取有效位置的点积和范数
+        dot_product_valid = dot_product[valid_mask]  # Shape: [num_valid]
+        norm_x_valid = norm_x[valid_mask]  # Shape: [num_valid]
+        norm_y_valid = norm_y[valid_mask]  # Shape: [num_valid]
+        
+        # 计算余弦相似度
+        cos_sim = dot_product_valid / (norm_x_valid * norm_y_valid + eps)
+        cos_sim = np.clip(cos_sim, -1.0, 1.0)
+        
+        # 映射到 [0, 1]
+        sim[valid_mask] = (cos_sim + 1) / 2
+    
+    return sim
 
 
 
@@ -95,16 +127,16 @@ def read_pkl(file_path):
 
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
-        self.max_nodes = 20
-        self.n_traj = 20
-        self.dim = 12  # Default feature dimension, override via kwargs
+        self.max_nodes = 100
+        self.n_traj = 100
+        self.dim = 6  # Default feature dimension, override via kwargs
         self.hidden_dim = 256
         self.eval_data = True
         self.eval_partition = "test"
         self.eval_data_idx = 0
         assign_env_config(self, kwargs)
         
-        self.device = 'cpu'  #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         obs_dict = {
             "observations": spaces.Box(low=0, high=1, shape=(self.max_nodes, self.dim)),
@@ -168,39 +200,56 @@ class ContainerVectorEnv(gym.Env):
       
 
     def step(self, action):
+
         self._go_to(action)
         self.num_steps += 1
         self.state = self._update_state()
         self.done = (action == self.first) & self.is_all_visited()
-        return self.state, self.reward, self.done, self.info
+
+        self.info
+
+        return self.state, self.reward, self.done, self.info # 
 
     def is_all_visited(self):
         return self.visited.all(axis=1)
 
     def _go_to(self, destination):
-        dest_node = self.nodes[destination]  # (n_traj, dim)
-
+        self.dest_node = self.nodes[destination]  # (n_traj, dim)
+        self.prev_node = self.nodes[self.last]  # (n_traj, dim)
+      
+        """ reward 在文件 syncVectorEnvPomo.py 中计算 """
         if self.num_steps != 0:
-            prev_node = self.nodes[self.last]  # (n_traj, dim)
-            #self.reward =  self.similarity(dest_node, prev_node) # -self.cost(dest_node, prev_node)   
-            self.reward = get_discriminator(dest_node,prev_node,self.dim,self.hidden_dim,self.device)
-        
+            # self.reward =  self.similarity(self.dest_node, self.prev_node) # -self.cost(dest_node, prev_node)   
+            self.reward = 0  #get_discriminator_reward(self.dest_node, self.prev_node, self.dim, self.hidden_dim, self.device)
         else:
             self.reward = np.zeros(self.n_traj)
             self.first = destination
 
         self.last = destination
         self.visited[np.arange(self.n_traj), destination] = True
+    
 
-    def similarity(self, x, y):
-        """
-        Compute similarity between two feature vectors: 1 - (sum of squared diffs / dim)
-        Returns value in [0, 1], where 1 is identical and 0 is maximally different
-        """
-        diff = x - y  # (n_traj, dim)
-        d2 = np.sum(diff ** 2, axis=-1)  # (n_traj,)
-        sim = 1 - (d2 / self.dim)
+
+    def similarity(self,x, y, eps=1e-8,pad_value=0.0):
+      
+        dot_product = np.sum(x * y, axis=-1)  # Shape: (n_traj,)
+        
+        norm_x = np.linalg.norm(x, axis=-1)  # Shape: (n_traj,)
+        norm_y = np.linalg.norm(y, axis=-1)  # Shape: (n_traj,)
+                
+        pad_mask = (norm_x == 0) | (norm_y == 0)
+        sim = np.full_like(norm_x, pad_value)
+
+        valid_mask = ~pad_mask
+        if np.any(valid_mask):
+
+            dot_product = np.sum(x[valid_mask] * y[valid_mask], axis=-1)
+            cos_sim = dot_product / (norm_x[valid_mask] * norm_y[valid_mask] + eps)
+            cos_sim = np.clip(cos_sim, -1.0, 1.0)
+            sim[valid_mask] = (cos_sim + 1) / 2
+
         return sim
+
 
     def cost(self, loc1, loc2):
         # 

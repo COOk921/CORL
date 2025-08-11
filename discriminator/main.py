@@ -13,12 +13,12 @@ from data_sampling import load_and_process_data
 import pdb
 
 CONFIG = {
-    "input_dim": 12,         # 每个节点的特征维度
+    "input_dim": 6,         # 每个节点的特征维度
     "hidden_dim": 256,         # 模型隐藏层维度
     "heuristic_dim": 0,       # (可选) 启发式方法产生的特征维度
     "learning_rate": 0.001,
     "epochs": 30,
-    "batch_size": 64,
+    "batch_size": 256,
     "window_size": 3,          # 定义“邻近”的窗口大小
     "num_neg_samples": 6,      # 每个正样本对应生成的负样本数量
     "test_size": 0.3,          # 划分训练集和验证集的比例
@@ -58,7 +58,7 @@ if __name__ == '__main__':
         for _ in range(CONFIG["num_neg_samples"]):
             while True:        
                 #k = np.random.randint(positions[idx], positions[idx+1])    
-                k = np.random.randint(i-10, i+10)
+                k = np.random.randint(i-50, i+50)
                 if abs(i - k) > CONFIG["window_size"]:
                     k = np.random.randint(0, num_nodes) if k >= num_nodes else k
                     all_pairs.append((all_features[i], all_features[k]))

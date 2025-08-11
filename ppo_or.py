@@ -53,11 +53,11 @@ def parse_args():
         help="the path to the definition of the environment, for example `envs.cvrp_vector_env:CVRPVectorEnv` if the `CVRPVectorEnv` class is defined in ./envs/cvrp_vector_env.py")
     parser.add_argument("--total-timesteps", type=int, default=3_000_000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=1e-3,
+    parser.add_argument("--learning-rate", type=float, default=5e-4,
         help="the learning rate of the optimizer")
     parser.add_argument("--weight-decay", type=float, default=0,
         help="the weight decay of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=512,
+    parser.add_argument("--num-envs", type=int, default=384,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=100,
         help="the number of steps to run in each environment per policy rollout")
@@ -85,7 +85,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--n-traj", type=int, default=20,
+    parser.add_argument("--n-traj", type=int, default=100,
         help="number of trajectories in a vectorized sub-environment")
     parser.add_argument("--n-test", type=int, default=1,
         help="how many test instance")

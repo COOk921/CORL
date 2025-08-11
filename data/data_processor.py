@@ -9,8 +9,8 @@ root_dir = "./data/container_data.pkl"
 output_filename = "./data/processed_container_data.pkl"
 
 continuous_features = ['Unit Weight (kg)']
-categorical_features = ['Unit POD', 'Unit Type Height', 'Unit Type Length', 'Unit Type ISO', 'from_yard',
-                    'from_bay', 'from_col', 'from_layer', 'to_bay', 'to_col', 'to_layer']
+categorical_features = ['Unit POD', 'from_yard',
+                    'from_bay', 'from_col', 'from_layer', ]
 
 
 def read_pkl(file_path):
