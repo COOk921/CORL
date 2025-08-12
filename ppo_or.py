@@ -6,6 +6,7 @@ import random
 import shutil
 import time
 from distutils.util import strtobool
+from scipy.stats import kendalltau, spearmanr
 
 import gym
 
@@ -57,7 +58,7 @@ def parse_args():
         help="the learning rate of the optimizer")
     parser.add_argument("--weight-decay", type=float, default=0,
         help="the weight decay of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=384,
+    parser.add_argument("--num-envs", type=int, default=128,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=100,
         help="the number of steps to run in each environment per policy rollout")
@@ -404,7 +405,7 @@ if __name__ == "__main__":
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         if update % 100 == 0 or update == num_updates:
             torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
-        if update % 2 == 0 or update == num_updates:
+        if update % 3 == 0 or update == num_updates:
             agent.eval()
             test_obs = test_envs.reset()
 
@@ -434,17 +435,26 @@ if __name__ == "__main__":
             
             resulting_traj = np.array(trajectories)[:,0,0]
             rehandle_rate = calculation_metrics(resulting_traj, test_obs['observations'][0])
+           
+            target  = np.concatenate([np.arange(len(resulting_traj)-1), [0]])
+            tau, _ = kendalltau(target, resulting_traj)
+            rho, _ = spearmanr(target, resulting_traj)
+
 
             avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))
             max_episodic_return = np.mean(np.max(episode_returns, axis=1))
             avg_episodic_length = np.mean(episode_lengths)
             
             logging.info(
+                "--------------------------------------------"
                 f"[test] episodic_return={max_episodic_return}\n"
                 f"avg_episodic_return={avg_episodic_return}\n"
                 f"max_episodic_return={max_episodic_return}\n"
                 f"avg_episodic_length={avg_episodic_length}\n"
                 f"rehandle_rate={rehandle_rate}\n"
+                f"tau={tau}\n"
+                f"rho={rho}\n"
+                "--------------------------------------------"
             )
             logging.info("")
 
@@ -452,6 +462,11 @@ if __name__ == "__main__":
             writer.add_scalar("test/episodic_return_mean", avg_episodic_return, global_step)
             writer.add_scalar("test/episodic_return_max", max_episodic_return, global_step)
             writer.add_scalar("test/episodic_length", avg_episodic_length, global_step)
+
+            writer.add_scalar("test/rehandle_rate", rehandle_rate, global_step)
+            writer.add_scalar("test/tau", tau, global_step)
+            writer.add_scalar("test/rho", rho, global_step)
+
 
     envs.close()
     writer.close()

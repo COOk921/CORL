@@ -3,8 +3,7 @@ import numpy as np
 from gym import spaces
 import torch
 
-from .container_data import ContainerDataset
-from discriminator.model import Discriminator
+from discriminator.model import Discriminator,PairClassifier
 import time
 import pickle
 import pdb
@@ -48,10 +47,9 @@ def get_data(max_nodes,data_path="./data/processed_container_data.pkl",  mode = 
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
     
-   
     return nodes
 
-def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
+def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,model_path = model_path):
 
     global _MODEL_CACHE
     if _MODEL_CACHE is None:
@@ -61,6 +59,12 @@ def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim,device ,m
             input_dim = input_dim,
             hidden_dim = hidden_dim,
         ).to(device)
+        # model_for_inference = PairClassifier(
+        #     dim = input_dim,
+        #     hidden_dim = hidden_dim,
+        # ).to(device)
+
+
         model_for_inference.load_state_dict(torch.load(model_path))
 
         _MODEL_CACHE = model_for_inference
@@ -150,7 +154,6 @@ class ContainerVectorEnv(gym.Env):
         self.action_space = spaces.MultiDiscrete([self.max_nodes] * self.n_traj)
         self.reward_space = None
         
-
         self.reset()
 
     def seed(self, seed):
@@ -173,7 +176,6 @@ class ContainerVectorEnv(gym.Env):
 
     def _load_orders(self):
         # Load container features, assuming dataset provides (max_nodes, dim) arrays
-        #self.nodes = ContainerDataset().get_next_data(max_nodes = self.max_nodes, mode='train')
         self.nodes = get_data(max_nodes = self.max_nodes, mode='train')
         
         

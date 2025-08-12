@@ -5,6 +5,8 @@ import numpy as np
 from gym.vector.utils import concatenate, create_empty_array, iterate
 from gym.vector.vector_env import VectorEnv
 from envs.container_vector_env import _MODEL_CACHE,get_discriminator_reward,similarity_reward
+from discriminator.config import Config
+
 import pdb
 
 
@@ -12,45 +14,6 @@ __all__ = ["SyncVectorEnv"]
 
 
 class SyncVectorEnv(VectorEnv):
-    """Vectorized environment that serially runs multiple environments.
-
-    Parameters
-    ----------
-    env_fns : iterable of callable
-        Functions that create the environments.
-
-    observation_space : :class:`gym.spaces.Space`, optional
-        Observation space of a single environment. If ``None``, then the
-        observation space of the first environment is taken.
-
-    action_space : :class:`gym.spaces.Space`, optional
-        Action space of a single environment. If ``None``, then the action space
-        of the first environment is taken.
-
-    copy : bool
-        If ``True``, then the :meth:`reset` and :meth:`step` methods return a
-        copy of the observations.
-
-    Raises
-    ------
-    RuntimeError
-        If the observation space of some sub-environment does not match
-        :obj:`observation_space` (or, by default, the observation space of
-        the first sub-environment).
-
-    Example
-    -------
-
-    .. code-block::
-
-        >>> env = gym.vector.SyncVectorEnv([
-        ...     lambda: gym.make("Pendulum-v0", g=9.81),
-        ...     lambda: gym.make("Pendulum-v0", g=1.62)
-        ... ])
-        >>> env.reset()
-        array([[-0.8286432 ,  0.5597771 ,  0.90249056],
-               [-0.85009176,  0.5266346 ,  0.60007906]], dtype=float32)
-    """
 
     def __init__(self, env_fns, observation_space=None, action_space=None, copy=True):
         self.env_fns = env_fns
@@ -59,7 +22,6 @@ class SyncVectorEnv(VectorEnv):
         self.metadata = self.envs[0].metadata
         self.n_traj = self.envs[0].n_traj
         self.dim = self.envs[0].dim
-        self.hidden_dim = self.envs[0].hidden_dim
         self.device = self.envs[0].device
         
 
@@ -142,7 +104,6 @@ class SyncVectorEnv(VectorEnv):
         dest_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.float32)
         prev_node = np.zeros((self.num_envs, self.n_traj, self.dim), dtype=np.float32)
 
-        
         for i, (env, action) in enumerate(zip(self.envs, self._actions)):
             
             observation, _ , self._dones[i], info  = env.step(action) # 
@@ -162,16 +123,14 @@ class SyncVectorEnv(VectorEnv):
        
         # [512,20]
         if num_steps - 1 != 0:
-            discriminator_reward = get_discriminator_reward(dest_node,prev_node, self.dim, self.hidden_dim, self.device) - 1 
+            discriminator_reward = get_discriminator_reward(dest_node,prev_node, Config.input_dim, Config.hidden_dim, self.device) - 1 
             sim_reward = similarity_reward(dest_node,prev_node) - 1 
-           
+          
             self._rewards = (sim_reward + discriminator_reward)/ 2 
 
         else:
             self._rewards = np.zeros((self.num_envs, self.n_traj), dtype=np.float64)
        
-
-
         self.observations = concatenate(
             self.single_observation_space, observations, self.observations
         )

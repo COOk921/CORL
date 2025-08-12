@@ -1,5 +1,5 @@
 import pdb
-
+from scipy.stats import kendalltau, spearmanr
 import numpy as np
 
 def _count_increasing_pairs(arr):
@@ -108,9 +108,9 @@ def calculation_metrics(sequence, feature):
 
     rehandle, denom, rate = compute_rehandle_rate(from_layer, from_col, from_bay, from_yard)
 
-    print("rehandle:", rehandle)
-    print("denom:", denom) 
-    print("rate:", rate) # low rehandle rate is good
+    # print("rehandle:", rehandle)
+    # print("denom:", denom) 
+    # print("rate:", rate) # low rehandle rate is good
 
     return rate
 
