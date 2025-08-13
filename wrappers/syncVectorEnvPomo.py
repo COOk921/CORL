@@ -125,7 +125,7 @@ class SyncVectorEnv(VectorEnv):
         if num_steps - 1 != 0:
             discriminator_reward = get_discriminator_reward(dest_node,prev_node, Config.input_dim, Config.hidden_dim, self.device) - 1 
             sim_reward = similarity_reward(dest_node,prev_node) - 1 
-          
+            #self._rewards = (sim_reward + discriminator_reward)/ 2 
             self._rewards = (sim_reward + discriminator_reward)/ 2 
 
         else:

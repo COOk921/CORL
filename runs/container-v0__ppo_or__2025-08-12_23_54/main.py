@@ -58,7 +58,7 @@ def parse_args():
         help="the learning rate of the optimizer")
     parser.add_argument("--weight-decay", type=float, default=0,
         help="the weight decay of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=384,
+    parser.add_argument("--num-envs", type=int, default=512,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=100,
         help="the number of steps to run in each environment per policy rollout")
@@ -86,9 +86,9 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--n-traj", type=int, default=100,
+    parser.add_argument("--n-traj", type=int, default=50,
         help="number of trajectories in a vectorized sub-environment")
-    parser.add_argument("--n-test", type=int, default=50,
+    parser.add_argument("--n-test", type=int, default=1,
         help="how many test instance")
     parser.add_argument("--multi-greedy-inference", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="whether to use multiple trajectory greedy inference")
@@ -405,7 +405,7 @@ if __name__ == "__main__":
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         if update % 100 == 0 or update == num_updates:
             torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
-        if update % 10 == 0 or update == num_updates:
+        if update % 3 == 0 or update == num_updates:
             agent.eval()
             test_obs = test_envs.reset()
 
@@ -426,63 +426,34 @@ if __name__ == "__main__":
                         elif args.problem == 'cvrp':
                             action = torch.arange(1, args.n_traj + 1).repeat(args.n_test, 1)
                 # TRY NOT TO MODIFY: execute the game and log data.
-                test_obs, reward, _, test_info = test_envs.step(action.cpu().numpy())
+                test_obs, _, _, test_info = test_envs.step(action.cpu().numpy())
 
                 trajectories.append(action.cpu().numpy())
 
                 episode_returns += reward
                 episode_lengths += 1 
             
-            """
-            trajectories : Step,(env,traj)
-            
-            episode_returns : (env,traj)
-            test_obs['observations'] : (env, node,obs_dim)
-
-            """
-
-            resulting_traj = np.array(trajectories).transpose(1, 2, 0)  # (env,traj,step)
-           
+            resulting_traj = np.array(trajectories)[:,0,0]
             rehandle_rate = calculation_metrics(resulting_traj, test_obs['observations'][0])
-          
+           
+            target  = np.concatenate([np.arange(len(resulting_traj)-1), [0]])
+            tau, _ = kendalltau(target, resulting_traj)
+            rho, _ = spearmanr(target, resulting_traj)
 
-            target  = np.concatenate([  np.arange(resulting_traj.shape[-1] -1), [0]  ])
-            target = np.tile(target, (resulting_traj.shape[0], resulting_traj.shape[1], 1))  #(env,traj,step)
-            
-            # tau, _ = kendalltau(target, resulting_traj)
-            tau_mean = 0
-            for i in range(resulting_traj.shape[0]):
-                max_traj = -1
-                for j in range(resulting_traj.shape[1]):
-                    tau, _ = kendalltau(target[i,j], resulting_traj[i,j])
-                    max_traj = max(max_traj, tau)
-                tau_mean += max_traj
-            tau_mean /= resulting_traj.shape[0]
-            
 
-            rho_mean = 0
-            for i in range(resulting_traj.shape[0]):
-                max_traj = -1
-                for j in range(resulting_traj.shape[1]):
-                    rho, _ = spearmanr(target[i,j], resulting_traj[i,j])
-                    max_traj = max(max_traj, rho)
-                rho_mean += max_traj
-            rho_mean /= resulting_traj.shape[0]
-
-        
             avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))
             max_episodic_return = np.mean(np.max(episode_returns, axis=1))
             avg_episodic_length = np.mean(episode_lengths)
             
             logging.info(
-                "--------------------------------------------\n"
+                "--------------------------------------------"
                 f"[test] episodic_return={max_episodic_return}\n"
                 f"avg_episodic_return={avg_episodic_return}\n"
                 f"max_episodic_return={max_episodic_return}\n"
                 f"avg_episodic_length={avg_episodic_length}\n"
                 f"rehandle_rate={rehandle_rate}\n"
-                f"tau={tau_mean}\n"
-                f"rho={rho_mean}\n"
+                f"tau={tau}\n"
+                f"rho={rho}\n"
                 "--------------------------------------------"
             )
             logging.info("")
@@ -493,8 +464,8 @@ if __name__ == "__main__":
             writer.add_scalar("test/episodic_length", avg_episodic_length, global_step)
 
             writer.add_scalar("test/rehandle_rate", rehandle_rate, global_step)
-            writer.add_scalar("test/tau", tau_mean, global_step)
-            writer.add_scalar("test/rho", rho_mean, global_step)
+            writer.add_scalar("test/tau", tau, global_step)
+            writer.add_scalar("test/rho", rho, global_step)
 
 
     envs.close()

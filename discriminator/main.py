@@ -47,8 +47,8 @@ if __name__ == '__main__':
 
         for _ in range(Config.num_neg_samples):
             while True:        
-                # k = np.random.randint(positions[idx], positions[idx+1])    
-                k = np.random.randint(i-10, i+10)
+                k = np.random.randint(positions[idx], positions[idx+1])    
+                # k = np.random.randint(i-10, i+10)
                 if abs(i - k) > Config.window_size:
                     k = np.random.randint(0, num_nodes) if k >= num_nodes else k
                     all_pairs.append((all_features[i], all_features[k]))

@@ -97,20 +97,24 @@ def compute_rehandle_rate(from_layer, from_col, from_bay, from_yard, denominator
 
 
 def calculation_metrics(sequence, feature):
-    # to_layer = feature[sequence, -1] 
-    # to_col = feature[sequence, -2]
-    # to_bay = feature[sequence, -3]
+    """
+    # (env,traj,step)
+    # (env, node,obs_dim)
+    """
 
-    from_layer = feature[sequence, -1]
-    from_col = feature[sequence, -2]
-    from_bay = feature[sequence, -3]
-    from_yard = feature[sequence, -4]
-
-    rehandle, denom, rate = compute_rehandle_rate(from_layer, from_col, from_bay, from_yard)
-
-    # print("rehandle:", rehandle)
-    # print("denom:", denom) 
-    # print("rate:", rate) # low rehandle rate is good
+    avg_rate = 0
+    for i in range(sequence.shape[0]):
+        max_traj = 0
+        for j in range(sequence.shape[1]):
+            from_layer = feature[sequence[i,j], -1]
+            from_col = feature[sequence[i,j], -2]
+            from_bay = feature[sequence[i,j], -3]
+            from_yard = feature[sequence[i,j], -4]
+            
+            rehandle, denom, rate = compute_rehandle_rate(from_layer, from_col, from_bay, from_yard)
+            max_traj = max(max_traj, rate) 
+        avg_rate += max_traj
+    avg_rate /= sequence.shape[0]
 
     return rate
 
