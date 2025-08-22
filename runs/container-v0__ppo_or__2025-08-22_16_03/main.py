@@ -307,11 +307,11 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = {
-            k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space
-        }
+        # b_obs = {
+        #     k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space
+        # }
 
-        # b_obs = {k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space if k != "graph_data"}
+        b_obs = {k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space if k != "graph_data"}
       
         # Edited
         b_logprobs = logprobs.reshape(-1, args.n_traj)
@@ -335,14 +335,14 @@ if __name__ == "__main__":
                 mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
                 r_inds = np.tile(np.arange(envsperbatch), args.num_steps)
                 
-                cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
+                # cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
 
-                # cur_obs = {}
-                # for k, v in obs[0].items():
-                #     if k == "graph_data":
-                #         cur_obs[k] = [v[i] for i in mbenvinds]
-                #     else:
-                #         cur_obs[k] = v[mbenvinds]
+                cur_obs = {}
+                for k, v in obs[0].items():
+                    if k == "graph_data":
+                        cur_obs[k] = [v[i] for i in mbenvinds]
+                    else:
+                        cur_obs[k] = v[mbenvinds]
            
                 encoder_state = agent.backbone.encode(cur_obs)
                 _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value_cached(

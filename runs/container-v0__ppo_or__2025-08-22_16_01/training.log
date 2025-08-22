@@ -1,0 +1,20 @@
+[Train] global_step=12928
+avg_episodic_return=-34.778526306152344
+max_episodic_return=-33.10076141357422
+avg_episodic_length=101.0
+
+[Train] global_step=25856
+avg_episodic_return=-35.163665771484375
+max_episodic_return=-33.583255767822266
+avg_episodic_length=101.0
+
+[Train] global_step=38784
+avg_episodic_return=-34.5543098449707
+max_episodic_return=-32.85226058959961
+avg_episodic_length=101.0
+
+[Train] global_step=51712
+avg_episodic_return=-35.160362243652344
+max_episodic_return=-33.53227233886719
+avg_episodic_length=101.0
+

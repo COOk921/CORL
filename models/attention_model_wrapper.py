@@ -1,7 +1,8 @@
 import torch
 
 from .nets.attention_model.attention_model import *
-
+from .nets.attention_model.gcn import GCN
+from torch_geometric.data import Data, Batch
 
 class Problem:
     def __init__(self, name):
@@ -23,6 +24,7 @@ class Backbone(nn.Module):
         self.problem = Problem(problem_name)
         self.embedding = AutoEmbedding(self.problem.NAME, {"embedding_dim": embedding_dim})
 
+        self.embedding_dim = embedding_dim
         self.encoder = GraphAttentionEncoder(
             n_heads=n_heads,
             embed_dim=embedding_dim,
@@ -32,6 +34,7 @@ class Backbone(nn.Module):
         self.decoder = Decoder(
             embedding_dim, self.embedding.context_dim, n_heads, self.problem, tanh_clipping
         )
+        
 
     def forward(self, obs):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
@@ -48,9 +51,30 @@ class Backbone(nn.Module):
     def encode(self, obs):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
         input = state.states["observations"]
+
+        """构建图模型 """
+        # graphs = []
+        # for b in range(len(obs["graph_data"])):
+        #     graphs.append(obs["graph_data"][b].to(self.device))
+        
+        # graph = Batch.from_data_list(graphs)
+        # num_samples = input.shape[1]
+
+        #embedding = []
+        # gcn = GCN(graph.x.shape[1], self.embedding_dim, self.embedding_dim).to(self.device)
+        # out = gcn(graph.x, graph.edge_index)
+        # start = 0
+        # for batch in range(len(obs["graph_data"])):
+        #     num_nodes = obs["graph_data"][batch].num_nodes  # 121,125,131...
+        #     wm_nodes = out[start : start + num_samples] 
+        #     start += num_nodes
+        #     embedding.append(wm_nodes)
+        # embedding = torch.stack(embedding).to(self.device)
+
         embedding = self.embedding(input)
         encoded_inputs, _ = self.encoder(embedding)
-        cached_embeddings = self.decoder._precompute(encoded_inputs)
+        cached_embeddings = self.decoder._precompute(encoded_inputs)  # [batch,num_node,hidden_dim]
+      
         return cached_embeddings
 
     def decode(self, obs, cached_embeddings):
@@ -131,8 +155,14 @@ class stateWrapper:
 
     def __init__(self, states, device, problem="tsp"):
         self.device = device
-        self.states = {k: torch.tensor(v, device=self.device) for k, v in states.items()}
-
+        
+        self.states = {}
+        for k, v in states.items():
+            if k != 'graph_data':
+                self.states[k] = torch.tensor(v, device=self.device)
+            else:
+                self.states[k] = v
+        
         if problem == "container":
             self.is_initial_action = self.states["is_initial_action"].to(torch.bool)
             self.first_a = self.states["first_node_idx"]

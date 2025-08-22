@@ -1,153 +1,90 @@
-import numpy as np
 import torch
-import torch.nn as nn
+from torch_geometric.data import Data, Batch
+from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
-import random
 
-# ======== 1. 数据增强函数 ========
-def augment_feature(x, noise_std=0.01, drop_prob=0.1):
+# 假设输入
+batch_size = 128
+num_samples = 100     # 每个 batch 内 100 个西瓜
+num_features = 6      # 每个西瓜 6 个特征
+num_feature_values = 10  # 假设所有特征总共有 10 种取值（类别id范围 0~9）
+
+# 随机生成类别型特征
+# 这里每个西瓜的 6 个特征值都是 0~9 的整数
+x = torch.randint(0, num_feature_values, (batch_size, num_samples, num_features))  # [128, 100, 6]
+print(x[0,:3,:])
+
+def build_graph_for_batch(sample_features, num_feature_values):
     """
-    对单个特征向量做数据增强：
-    1. 添加高斯噪声
-    2. 随机丢弃部分特征
+    输入：sample_features [num_samples, num_features]
+    输出：一个 PyG Data 图对象
     """
-    x = x.copy()
-    # 高斯噪声
-    x += np.random.normal(0, noise_std, size=x.shape)
-    # 随机丢特征
-    mask = np.random.rand(*x.shape) < drop_prob
-    x[mask] = 0
-    return x
+    num_samples = sample_features.size(0)
 
-# ======== 2. 正负样本对生成 ========
-def generate_contrastive_pairs(features, window_size=1, num_negatives=1):
-    """
-    features: numpy array [N, dim]
-    window_size: 多大范围算相邻
-    num_negatives: 每个正样本对应几个负样本
-    """
-    pos_pairs = []
-    neg_pairs = []
-    N = len(features)
+    # 节点：西瓜 + 特征值
+    # 0 ~ num_samples-1 : 西瓜节点
+    # num_samples ~ num_samples+num_feature_values-1 : 特征值节点
+    total_nodes = num_samples + num_feature_values
+    edge_index = []
 
-    for i in range(N - 1):
-        # 正样本对：相邻集装箱
-        if abs(i - (i + 1)) <= window_size:
-            f1 = augment_feature(features[i])
-            f2 = augment_feature(features[i+1])
-            pos_pairs.append((f1, f2))
+    # 构建边
+    for i in range(num_samples):
+        for f in range(sample_features.size(1)):
+            fv = sample_features[i, f].item()
+            fv_node = num_samples + fv
+            edge_index.append([i, fv_node])
+            edge_index.append([fv_node, i])  # 双向
 
-            # 负样本对
-            for _ in range(num_negatives):
-                j = random.randint(0, N-1)
-                while abs(i - j) <= window_size:
-                    j = random.randint(0, N-1)
-                f_neg = augment_feature(features[j])
-                neg_pairs.append((f1, f_neg))
+    edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
 
-    return pos_pairs, neg_pairs
+    # 初始特征: 用 one-hot，简单起见
+    x_nodes = torch.eye(total_nodes)
 
-# ======== 3. MLP 编码器 ========
-class MLPEncoder(nn.Module):
-    def __init__(self, input_dim, emb_dim=64):
+    return Data(x=x_nodes, edge_index=edge_index)
+
+
+# --- 构建 batch ---
+graphs = []
+for b in range(batch_size):
+    g = build_graph_for_batch(x[b], num_feature_values)
+    graphs.append(g)
+
+# 合并成一个 Batch
+batch_graph = Batch.from_data_list(graphs)
+print(batch_graph)
+# >>> Batch(x=[128*110, 110], edge_index=[2, ...], batch=[128*110])
+
+
+# --- 定义 GCN 模型 ---
+class GCN(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, emb_dim)
-        )
+        self.conv1 = GCNConv(in_channels, hidden_channels)
+        self.conv2 = GCNConv(hidden_channels, out_channels)
 
-    def forward(self, x):
-        return self.net(x)
+    def forward(self, x, edge_index, batch):
+        x = self.conv1(x, edge_index)
+        x = F.relu(x)
+        x = self.conv2(x, edge_index)
+        return x
 
 
+# 模型初始化
+in_channels = batch_graph.x.size(1)  # one-hot 维度
+model = GCN(in_channels, hidden_channels=64, out_channels=32)
 
-# ======== 4. NT-Xent Loss ========
-def nt_xent_loss(z1, z2, temperature=0.5):
-    """
-    z1, z2: [batch, dim] 对应正样本两侧的embedding
-    """
-    batch_size = z1.shape[0]
-    z1 = F.normalize(z1, dim=1)
-    z2 = F.normalize(z2, dim=1)
+# 前向传播
+out = model(batch_graph.x, batch_graph.edge_index, batch_graph.batch)
+print("所有节点 embedding:", out.shape)  # [128*110, 32]
 
-    representations = torch.cat([z1, z2], dim=0)  # 2N × dim
-    similarity_matrix = F.cosine_similarity(
-        representations.unsqueeze(1), representations.unsqueeze(0), dim=2
-    )  # 2N × 2N
+# 按 batch 分割
+watermelon_emb = []
+start = 0
+for b in range(batch_size):
+    num_nodes = num_samples + num_feature_values
+    wm_nodes = out[start : start + num_samples]  # 前100是西瓜节点
+    watermelon_emb.append(wm_nodes)
+    start += num_nodes
+watermelon_emb = torch.stack(watermelon_emb)  # [128, 100, 32]
 
-    # 对角线为自身相似度，置 -inf 避免参与 softmax
-    mask = torch.eye(2 * batch_size, dtype=torch.bool).to(z1.device)
-    similarity_matrix.masked_fill_(mask, -9e15)
-
-    # 构造正样本索引
-    positives = torch.cat([
-        torch.arange(batch_size, 2 * batch_size),
-        torch.arange(0, batch_size)
-    ]).to(z1.device)
-
-    pos_sim = similarity_matrix[torch.arange(2 * batch_size), positives]
-    loss = -torch.log(
-        torch.exp(pos_sim / temperature) /
-        torch.exp(similarity_matrix / temperature).sum(dim=1)
-    )
-
-    return loss.mean()
-
-# ===== 2. 预测函数 =====
-def predict_pair(encoder, f1, f2, threshold=0.8):
-    """
-    encoder: 训练好的编码器
-    f1, f2: 两个集装箱的特征 (list / numpy array / tensor)
-    threshold: 相似度阈值
-    """
-    f1 = torch.tensor(f1, dtype=torch.float32).unsqueeze(0)  # shape: [1, dim]
-    f2 = torch.tensor(f2, dtype=torch.float32).unsqueeze(0)
-
-    with torch.no_grad():
-        z1 = F.normalize(encoder(f1), dim=1)
-        z2 = F.normalize(encoder(f2), dim=1)
-        sim = F.cosine_similarity(z1, z2).item()
-
-    label = 1 if sim > threshold else 0
-    return label, sim
-
-# ======== 5. 模型训练示例 ========
-if __name__ == "__main__":
-    # 模拟集装箱特征
-    N, dim = 100, 4  # 100个集装箱，每个16维特征
-    all_features = np.random.rand(N, dim)
-
-    # 生成训练数据
-    pos_pairs, neg_pairs = generate_contrastive_pairs(all_features)
-
-    # 合并正负样本
-    all_pairs = pos_pairs + neg_pairs
-    labels = [1] * len(pos_pairs) + [0] * len(neg_pairs)
-
-    # 转为Tensor
-    x1 = torch.tensor([p[0] for p in all_pairs], dtype=torch.float32)
-    x2 = torch.tensor([p[1] for p in all_pairs], dtype=torch.float32)
-
-    # 初始化模型
-    encoder = MLPEncoder(input_dim=dim, emb_dim=64)
-    optimizer = torch.optim.Adam(encoder.parameters(), lr=1e-3)
-
-    # 训练
-    for epoch in range(10):
-        optimizer.zero_grad()
-        z1 = encoder(x1)
-        z2 = encoder(x2)
-        loss = nt_xent_loss(z1, z2)
-        loss.backward()
-        optimizer.step()
-        print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
-    torch.save(encoder.state_dict(), "encoder.pth")
-
-    encoder.eval()
-
-    f1 = [0.9, 0.3, 2.1, 1.7]  # 集装箱1特征
-    f2 = [0.92, 0.38, 0.19, 0.79]  # 集装箱2特征
-    label, sim = predict_pair(encoder, f1, f2, threshold=0.85)
-
-    print(f"预测类别: {label}, 相似度: {sim:.4f}")
+print("西瓜 embedding:", watermelon_emb.shape)

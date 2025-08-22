@@ -8,6 +8,9 @@ import time
 import pickle
 import pdb
 
+import torch
+from torch_geometric.data import Data
+
 _DATA_CACHE = None
 _MODEL_CACHE = None
 
@@ -110,11 +113,7 @@ def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
         
         # 映射到 [0, 1]
         sim[valid_mask] = (cos_sim + 1) / 2
-    
     return sim
-
-
-
 
 def assign_env_config(self, kwargs):
     """
@@ -127,6 +126,57 @@ def read_pkl(file_path):
     with open(file_path, 'rb') as f:
         data = pickle.load(f)
     return data
+
+def graph_data(data):
+    data = data[:, 1:]
+    num_samples = data.shape[0]
+    num_features = data.shape[1]
+    
+    if isinstance(data, np.ndarray):
+        sample_features = torch.tensor(data, dtype=torch.long)
+    else:
+        sample_features = data  
+
+    feature_value_maps = []  # 列表，每个特征一个 dict: value -> local_offset
+    total_feature_nodes = 0
+    current_offset = 0
+
+    for f in range(num_features):
+        unique_values = torch.unique(sample_features[:, f])
+        value_to_local_id = {val.item(): idx for idx, val in enumerate(unique_values)}
+        feature_value_maps.append(value_to_local_id)
+        num_unique_for_f = len(unique_values)
+        total_feature_nodes += num_unique_for_f
+
+    # 总节点数：样本节点 + 所有特征的独特值节点
+    total_nodes = num_samples + total_feature_nodes
+
+    feature_dim = num_features + 1
+    x_nodes = torch.zeros(total_nodes, feature_dim, dtype=torch.float32)
+    x_nodes[:num_samples, 0] = 1.0 
+
+    # --- 构建二部图的边 ---
+    edge_index = []
+    feature_node_offset = 0  # 为每个特征的节点组分配偏移
+    
+    for f in range(num_features):
+        value_map = feature_value_maps[f] # value -> id 
+        for i in range(num_samples):
+            fv = sample_features[i, f].item()
+            local_id = value_map[fv]
+            global_feature_node_id = num_samples + feature_node_offset + local_id
+           
+            edge_index.append([i, global_feature_node_id])  # 样本 -> 特征值节点
+            edge_index.append([global_feature_node_id, i])  # 双向
+
+        # 更新偏移到下一个特征的节点组
+        feature_node_offset += len(value_map)
+
+    edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+
+    data_graph = Data(x=x_nodes, edge_index=edge_index)
+    return data_graph
+
 
 
 class ContainerVectorEnv(gym.Env):
@@ -148,6 +198,11 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "last_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "is_initial_action": spaces.Discrete(1),
+            # "graph_data": spaces.Graph(
+            #     node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
+            #     edge_space=None
+            #     )
+
         }
 
         self.observation_space = spaces.Dict(obs_dict)
@@ -164,11 +219,15 @@ class ContainerVectorEnv(gym.Env):
         self.num_steps = 0
         self.last = np.zeros(self.n_traj, dtype=int)
         self.first = np.zeros(self.n_traj, dtype=int)
-
+        
         if self.eval_data:
             self._load_orders()
         else:
             self._generate_orders()
+
+        # self.graph_data = graph_data(self.nodes)
+
+
         self.state = self._update_state()
         self.info = {}
         self.done = False
@@ -180,27 +239,8 @@ class ContainerVectorEnv(gym.Env):
         
         
     def _generate_orders(self):
-        # centers = np.random.rand(2, self.dim)        
-        # cluster_sizes = np.full(2, self.max_nodes // 2)
-        # cluster_sizes[:self.max_nodes % 2] += 1
-
-        # node_clusters = []
-        # for i in range(2):
-        #     # 使用标准差为0.1的高斯噪声，让数据集中在中心附近
-        #     cluster_nodes = np.random.normal(loc=centers[i], scale=0.01, size=(cluster_sizes[i], self.dim))
-        #     # 确保数据在[0, 1]范围内
-        #     cluster_nodes = np.clip(cluster_nodes, 0, 1)
-        #     node_clusters.append(cluster_nodes)
-        
-        # self.nodes = np.vstack(node_clusters)
-
-        #self.nodes = np.random.rand(self.max_nodes, self.dim)
-        #self.nodes = self.dataset.get_next_data(max_nodes = self.max_nodes, mode='train')
-        
         self.nodes = np.random.rand( self.max_nodes, self.dim)
         
-      
-
     def step(self, action):
 
         self._go_to(action)
@@ -230,8 +270,6 @@ class ContainerVectorEnv(gym.Env):
         self.last = destination
         self.visited[np.arange(self.n_traj), destination] = True
     
-
-
     def similarity(self,x, y, eps=1e-8,pad_value=0.0):
       
         dot_product = np.sum(x * y, axis=-1)  # Shape: (n_traj,)
@@ -265,6 +303,7 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": self.first,
             "last_node_idx": self.last,
             "is_initial_action": self.num_steps == 0,
+            # "graph_data": self.graph_data ,
         }
         return obs
 
