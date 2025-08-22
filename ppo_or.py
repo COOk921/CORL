@@ -58,7 +58,7 @@ def parse_args():
         help="the learning rate of the optimizer")
     parser.add_argument("--weight-decay", type=float, default=0,
         help="the weight decay of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=128,
+    parser.add_argument("--num-envs", type=int, default=512,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=100,
         help="the number of steps to run in each environment per policy rollout")
@@ -86,7 +86,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--n-traj", type=int, default=100,
+    parser.add_argument("--n-traj", type=int, default=50,
         help="number of trajectories in a vectorized sub-environment")
     parser.add_argument("--n-test", type=int, default=50,
         help="how many test instance")
@@ -307,11 +307,11 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = {
-            k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space
-        }
+        # b_obs = {
+        #     k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space
+        # }
 
-        # b_obs = {k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space if k != "graph_data"}
+        b_obs = {k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space if k != "graph_data"}
       
         # Edited
         b_logprobs = logprobs.reshape(-1, args.n_traj)
@@ -335,14 +335,8 @@ if __name__ == "__main__":
                 mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
                 r_inds = np.tile(np.arange(envsperbatch), args.num_steps)
                 
-                cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
-
-                # cur_obs = {}
-                # for k, v in obs[0].items():
-                #     if k == "graph_data":
-                #         cur_obs[k] = [v[i] for i in mbenvinds]
-                #     else:
-                #         cur_obs[k] = v[mbenvinds]
+                # cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
+                cur_obs = {k: [v[i] for i in mbenvinds] if k == "graph_data" else v[mbenvinds] for k, v in obs[0].items()}
            
                 encoder_state = agent.backbone.encode(cur_obs)
                 _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value_cached(

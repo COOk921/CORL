@@ -181,8 +181,8 @@ def graph_data(data):
 
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
-        self.max_nodes = 100
-        self.n_traj = 100
+        self.max_nodes = 50
+        self.n_traj = 50
         self.dim = 6  # Default feature dimension, override via kwargs
         self.hidden_dim = 256
         self.eval_data = True
@@ -198,10 +198,10 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "last_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "is_initial_action": spaces.Discrete(1),
-            # "graph_data": spaces.Graph(
-            #     node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
-            #     edge_space=None
-            #     )
+            "graph_data": spaces.Graph(
+                node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
+                edge_space=None
+                )
 
         }
 
@@ -225,7 +225,7 @@ class ContainerVectorEnv(gym.Env):
         else:
             self._generate_orders()
 
-        # self.graph_data = graph_data(self.nodes)
+        self.graph_data = graph_data(self.nodes)
 
 
         self.state = self._update_state()
@@ -303,7 +303,7 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": self.first,
             "last_node_idx": self.last,
             "is_initial_action": self.num_steps == 0,
-            # "graph_data": self.graph_data ,
+            "graph_data": self.graph_data ,
         }
         return obs
 

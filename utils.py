@@ -120,19 +120,3 @@ def calculation_metrics(sequence, feature):
     return rate
 
 
-
-
-
-def move_graphs_to_cpu(data):
-
-    if isinstance(data, Data):
-        return data.cpu()
-    elif isinstance(data, tuple):
-        # 如果是元组，递归处理每个元素
-        return tuple(move_graphs_to_cpu(item) for item in data)
-    elif isinstance(data, list):
-        # 如果是列表，递归处理每个元素
-        return [move_graphs_to_cpu(item) for item in data]
-    else:
-        # 其他类型数据保持不变
-        return data

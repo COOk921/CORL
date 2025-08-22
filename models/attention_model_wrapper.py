@@ -3,6 +3,8 @@ import torch
 from .nets.attention_model.attention_model import *
 from .nets.attention_model.gcn import GCN
 from torch_geometric.data import Data, Batch
+import pdb
+
 
 class Problem:
     def __init__(self, name):
@@ -39,6 +41,8 @@ class Backbone(nn.Module):
     def forward(self, obs):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
         input = state.states["observations"]
+
+
         embedding = self.embedding(input)
         encoded_inputs, _ = self.encoder(embedding)
 
@@ -53,25 +57,25 @@ class Backbone(nn.Module):
         input = state.states["observations"]
 
         """构建图模型 """
-        # graphs = []
-        # for b in range(len(obs["graph_data"])):
-        #     graphs.append(obs["graph_data"][b].to(self.device))
+        graphs = []
+        for b in range(len(obs["graph_data"])):
+            graphs.append(obs["graph_data"][b].to(self.device))
         
-        # graph = Batch.from_data_list(graphs)
-        # num_samples = input.shape[1]
+        graph = Batch.from_data_list(graphs)
+        num_samples = input.shape[1]
 
-        #embedding = []
-        # gcn = GCN(graph.x.shape[1], self.embedding_dim, self.embedding_dim).to(self.device)
-        # out = gcn(graph.x, graph.edge_index)
-        # start = 0
-        # for batch in range(len(obs["graph_data"])):
-        #     num_nodes = obs["graph_data"][batch].num_nodes  # 121,125,131...
-        #     wm_nodes = out[start : start + num_samples] 
-        #     start += num_nodes
-        #     embedding.append(wm_nodes)
-        # embedding = torch.stack(embedding).to(self.device)
+        embedding = []
+        gcn = GCN(graph.x.shape[1], self.embedding_dim,self.embedding_dim, self.embedding_dim).to(self.device)
+        out = gcn(graph.x, graph.edge_index)
+        start = 0
+        for batch in range(len(obs["graph_data"])):
+            num_nodes = obs["graph_data"][batch].num_nodes  # 121,125,131...
+            wm_nodes = out[start : start + num_samples] 
+            start += num_nodes
+            embedding.append(wm_nodes)
+        embedding = torch.stack(embedding).to(self.device)
 
-        embedding = self.embedding(input)
+        # embedding = self.embedding(input)
         encoded_inputs, _ = self.encoder(embedding)
         cached_embeddings = self.decoder._precompute(encoded_inputs)  # [batch,num_node,hidden_dim]
       
