@@ -125,40 +125,62 @@ def read_pkl(file_path):
         data = pickle.load(f)
     return data
 
-def graph_data(data):
-    # 获取节点数量和特征维度
-    num_nodes = data.shape[0]
-    dim = data.shape[1]
 
-    # 将数据转换为 PyTorch 张量，并确保数据类型为 float
+def graph_data(data):
+    batch, num_nodes, dim = data.shape
+
     if isinstance(data, np.ndarray):
         node_features = torch.tensor(data, dtype=torch.float)
     else:
         node_features = data
 
-    import time
-    begin = time.time()
     source_nodes = []
     target_nodes = []
-    for i in range(num_nodes):
-        for j in range(num_nodes):
-            if i != j:
-                source_nodes.append(i)
-                target_nodes.append(j)
-    edge_index = torch.tensor([source_nodes, target_nodes], dtype=torch.long)
+    num_edges = num_nodes * 5  # 随机建立num_nodes*5条边
+    data_graphs = []
+    for b in range(batch):
+        batch_node_features = node_features[b]
+      
+        selected_features = batch_node_features[:, 2:5]
+        # 初始化边索引和边特征列表
+        edge_index_list = []
+        edge_attr_list = []
+        
+        unique_features, inverse_indices = torch.unique(selected_features, dim=0, return_inverse=True)
+        
+        for group_id in range(len(unique_features)):
+            group_indices = torch.where(inverse_indices == group_id)[0]
+            num_nodes_in_group = len(group_indices)
+            
+            if num_nodes_in_group > 1:
+                # 生成全连接的边索引
+                source_nodes = group_indices.repeat_interleave(num_nodes_in_group)
+                target_nodes = group_indices.repeat(num_nodes_in_group)
+                # 排除自环边
+                mask = source_nodes != target_nodes
+                source_nodes = source_nodes[mask]
+                target_nodes = target_nodes[mask]
+                
+                edge_index_list.append(torch.stack([source_nodes, target_nodes], dim=0))
+                
+                # 计算边的特征（距离）
+                # edge_attr = torch.norm(batch_node_features[source_nodes] - batch_node_features[target_nodes], p=2, dim=-1).view(-1, 1)
+                # edge_attr_list.append(edge_attr)
+        
+        if edge_index_list:
+            edge_index = torch.cat(edge_index_list, dim=1).long()
+            # edge_attr = torch.cat(edge_attr_list, dim=0)
+        else:
+            # 如果没有满足条件的边，创建空的边索引和边特征
+            edge_index = torch.empty((2, 0), dtype=torch.long)
+            # edge_attr = torch.empty((0, 1), dtype=torch.float)
 
-    edge_attr_list = []
-    for i, j in zip(source_nodes, target_nodes):
-        dist = torch.norm(node_features[i] - node_features[j], p=2)
-        edge_attr_list.append(dist)
-    edge_attr = torch.tensor(edge_attr_list, dtype=torch.float).view(-1, 1)
+        data_graph = Data(x=batch_node_features, edge_index=edge_index, ) #edge_attr=edge_attr
+        data_graphs.append(data_graph)
+        
+    batch_graph = Batch.from_data_list(data_graphs)
 
-    # 创建 PyG 的 Data 对象
-    data_graph = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
-    end = time.time()
-    print(f"time: {end - begin}")
-
-    return data_graph
+    return batch_graph
 
 
 

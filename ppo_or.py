@@ -59,7 +59,7 @@ def parse_args():
         help="the learning rate of the optimizer")
     parser.add_argument("--weight-decay", type=float, default=0,
         help="the weight decay of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=1024,
+    parser.add_argument("--num-envs", type=int, default=256,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=100,
         help="the number of steps to run in each environment per policy rollout")
@@ -342,7 +342,6 @@ if __name__ == "__main__":
                              
                 encoder_state = agent.backbone.encode(cur_obs)
 
-       
                 # _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value_cached(
                 #     {k: v[mb_inds] for k, v in b_obs.items()},
                 #     b_actions.long()[mb_inds],
