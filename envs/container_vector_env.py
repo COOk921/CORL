@@ -10,6 +10,8 @@ import pdb
 
 import torch
 from torch_geometric.data import Data
+from torch_geometric.data import Data
+import torch
 
 _DATA_CACHE = None
 _MODEL_CACHE = None
@@ -39,14 +41,10 @@ def get_data(max_nodes,data_path="./data/processed_container_data.pkl",  mode = 
     
     if mode == 'train':
         key = np.random.default_rng().choice(keys)
-    else:
-        pass
 
     df = _DATA_CACHE[tuple(key)]
-
-    
     nodes = df[selected_columns].to_numpy()[:max_nodes]
-
+    
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
     
@@ -128,53 +126,38 @@ def read_pkl(file_path):
     return data
 
 def graph_data(data):
-    data = data[:, 1:]
-    num_samples = data.shape[0]
-    num_features = data.shape[1]
-    
+    # 获取节点数量和特征维度
+    num_nodes = data.shape[0]
+    dim = data.shape[1]
+
+    # 将数据转换为 PyTorch 张量，并确保数据类型为 float
     if isinstance(data, np.ndarray):
-        sample_features = torch.tensor(data, dtype=torch.long)
+        node_features = torch.tensor(data, dtype=torch.float)
     else:
-        sample_features = data  
+        node_features = data
 
-    feature_value_maps = []  # 列表，每个特征一个 dict: value -> local_offset
-    total_feature_nodes = 0
-    current_offset = 0
+    import time
+    begin = time.time()
+    source_nodes = []
+    target_nodes = []
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            if i != j:
+                source_nodes.append(i)
+                target_nodes.append(j)
+    edge_index = torch.tensor([source_nodes, target_nodes], dtype=torch.long)
 
-    for f in range(num_features):
-        unique_values = torch.unique(sample_features[:, f])
-        value_to_local_id = {val.item(): idx for idx, val in enumerate(unique_values)}
-        feature_value_maps.append(value_to_local_id)
-        num_unique_for_f = len(unique_values)
-        total_feature_nodes += num_unique_for_f
+    edge_attr_list = []
+    for i, j in zip(source_nodes, target_nodes):
+        dist = torch.norm(node_features[i] - node_features[j], p=2)
+        edge_attr_list.append(dist)
+    edge_attr = torch.tensor(edge_attr_list, dtype=torch.float).view(-1, 1)
 
-    # 总节点数：样本节点 + 所有特征的独特值节点
-    total_nodes = num_samples + total_feature_nodes
+    # 创建 PyG 的 Data 对象
+    data_graph = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
+    end = time.time()
+    print(f"time: {end - begin}")
 
-    feature_dim = num_features + 1
-    x_nodes = torch.zeros(total_nodes, feature_dim, dtype=torch.float32)
-    x_nodes[:num_samples, 0] = 1.0 
-
-    # --- 构建二部图的边 ---
-    edge_index = []
-    feature_node_offset = 0  # 为每个特征的节点组分配偏移
-    
-    for f in range(num_features):
-        value_map = feature_value_maps[f] # value -> id 
-        for i in range(num_samples):
-            fv = sample_features[i, f].item()
-            local_id = value_map[fv]
-            global_feature_node_id = num_samples + feature_node_offset + local_id
-           
-            edge_index.append([i, global_feature_node_id])  # 样本 -> 特征值节点
-            edge_index.append([global_feature_node_id, i])  # 双向
-
-        # 更新偏移到下一个特征的节点组
-        feature_node_offset += len(value_map)
-
-    edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-
-    data_graph = Data(x=x_nodes, edge_index=edge_index)
     return data_graph
 
 
@@ -198,10 +181,10 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "last_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "is_initial_action": spaces.Discrete(1),
-            "graph_data": spaces.Graph(
-                node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
-                edge_space=None
-                )
+            # "graph_data": spaces.Graph(
+            #     node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
+            #     edge_space=None
+            #     )
 
         }
 
@@ -225,9 +208,7 @@ class ContainerVectorEnv(gym.Env):
         else:
             self._generate_orders()
 
-        self.graph_data = graph_data(self.nodes)
-
-
+        # self.graph_data = graph_data(self.nodes)
         self.state = self._update_state()
         self.info = {}
         self.done = False
@@ -247,9 +228,7 @@ class ContainerVectorEnv(gym.Env):
         self.num_steps += 1
         self.state = self._update_state()
         self.done = (action == self.first) & self.is_all_visited()
-
         self.info
-
         return self.state, self.reward, self.done, self.info # 
 
     def is_all_visited(self):
@@ -303,7 +282,7 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": self.first,
             "last_node_idx": self.last,
             "is_initial_action": self.num_steps == 0,
-            "graph_data": self.graph_data ,
+            # "graph_data": self.graph_data ,
         }
         return obs
 

@@ -1,15 +1,47 @@
 import torch
-
+import numpy as np
 from .nets.attention_model.attention_model import *
 from .nets.attention_model.gcn import GCN
 from torch_geometric.data import Data, Batch
 import pdb
 
 
+def graph_data(data):
+    batch, num_nodes, dim = data.shape
+
+    if isinstance(data, np.ndarray):
+        node_features = torch.tensor(data, dtype=torch.float)
+    else:
+        node_features = data
+
+    source_nodes = []
+    target_nodes = []
+    num_edges = num_nodes * 5  # 随机建立num_nodes*5条边
+    data_graphs = []
+    for b in range(batch):
+        batch_node_features = node_features[b]
+        # 随机生成源节点和目标节点
+        source_nodes = torch.randint(0, num_nodes, (num_edges,))
+        target_nodes = torch.randint(0, num_nodes, (num_edges,))
+        # 确保源节点和目标节点不相同
+        while torch.any(source_nodes == target_nodes):
+            diff_mask = source_nodes == target_nodes
+            target_nodes[diff_mask] = torch.randint(0, num_nodes, (diff_mask.sum(),))
+        edge_index = torch.stack([source_nodes, target_nodes], dim=0).long()
+
+        # 计算边的特征（距离）
+        edge_attr = torch.norm(batch_node_features[source_nodes] - batch_node_features[target_nodes], p=2, dim=-1).view(-1, 1)
+
+        data_graph = Data(x=batch_node_features, edge_index=edge_index, edge_attr=edge_attr)
+        data_graphs.append(data_graph)
+    batch_graph = Batch.from_data_list(data_graphs)
+
+    return batch_graph
+
+
 class Problem:
     def __init__(self, name):
         self.NAME = name
-
 
 class Backbone(nn.Module):
     def __init__(
@@ -54,31 +86,22 @@ class Backbone(nn.Module):
 
     def encode(self, obs):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
-        input = state.states["observations"]
-
-        """构建图模型 """
-        graphs = []
-        for b in range(len(obs["graph_data"])):
-            graphs.append(obs["graph_data"][b].to(self.device))
+        input = state.states["observations"]        # [batch, num_node, dim]
         
-        graph = Batch.from_data_list(graphs)
-        num_samples = input.shape[1]
-
-        embedding = []
-        gcn = GCN(graph.x.shape[1], self.embedding_dim,self.embedding_dim, self.embedding_dim).to(self.device)
-        out = gcn(graph.x, graph.edge_index)
-        start = 0
-        for batch in range(len(obs["graph_data"])):
-            num_nodes = obs["graph_data"][batch].num_nodes  # 121,125,131...
-            wm_nodes = out[start : start + num_samples] 
-            start += num_nodes
-            embedding.append(wm_nodes)
-        embedding = torch.stack(embedding).to(self.device)
-
-        # embedding = self.embedding(input)
-        encoded_inputs, _ = self.encoder(embedding)
-        cached_embeddings = self.decoder._precompute(encoded_inputs)  # [batch,num_node,hidden_dim]
+        """构建图模型 """
+        graph = graph_data(input).to(self.device)
       
+        gcn = GCN(graph.x.shape[-1], self.embedding_dim,self.embedding_dim, self.embedding_dim).to(self.device)
+        out = gcn(graph)
+      
+        embedding = out.view(input.shape[0], input.shape[1], -1)
+        encoded_inputs =  embedding
+
+        """embedding + MHA """
+        # embedding = self.embedding(input)
+        # encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
+        cached_embeddings = self.decoder._precompute(encoded_inputs)  
+
         return cached_embeddings
 
     def decode(self, obs, cached_embeddings):
@@ -145,6 +168,7 @@ class Agent(nn.Module):
             x = self.backbone.decode(x, state)
         else:
             x = self.backbone.decode(x, state)
+       
         logits = self.actor(x)
         probs = torch.distributions.Categorical(logits=logits)
         if action is None:

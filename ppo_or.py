@@ -6,6 +6,7 @@ import random
 import shutil
 import time
 from distutils.util import strtobool
+from turtle import begin_fill
 from scipy.stats import kendalltau, spearmanr
 
 import gym
@@ -58,7 +59,7 @@ def parse_args():
         help="the learning rate of the optimizer")
     parser.add_argument("--weight-decay", type=float, default=0,
         help="the weight decay of the optimizer")
-    parser.add_argument("--num-envs", type=int, default=512,
+    parser.add_argument("--num-envs", type=int, default=1024,
         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=100,
         help="the number of steps to run in each environment per policy rollout")
@@ -238,10 +239,10 @@ if __name__ == "__main__":
             optimizer.param_groups[0]["lr"] = lrnow
         next_obs = envs.reset()
         # pdb.set_trace()
+
         encoder_state = agent.backbone.encode(next_obs)  # [batch,num_node,hidden_dim]
 
         next_done = torch.zeros(args.num_envs, args.n_traj).to(device)
-
         episode_returns = np.zeros((args.num_envs, args.n_traj),dtype=np.float32)
         episode_lengths = np.zeros( args.num_envs , dtype=np.int32)
 
@@ -327,6 +328,7 @@ if __name__ == "__main__":
         flatinds = np.arange(args.batch_size).reshape(args.num_steps, args.num_envs)
 
         clipfracs = []
+        total_time = 0
         for epoch in range(args.update_epochs):
             np.random.shuffle(envinds)
             for start in range(0, args.num_envs, envsperbatch):
@@ -335,16 +337,19 @@ if __name__ == "__main__":
                 mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
                 r_inds = np.tile(np.arange(envsperbatch), args.num_steps)
                 
-                # cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
-                cur_obs = {k: [v[i] for i in mbenvinds] if k == "graph_data" else v[mbenvinds] for k, v in obs[0].items()}
-           
+                cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
+                # cur_obs = {k: [v[i] for i in mbenvinds] if k == "graph_data" else v[mbenvinds] for k, v in obs[0].items()}
+                             
                 encoder_state = agent.backbone.encode(cur_obs)
-                _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value_cached(
-                    {k: v[mb_inds] for k, v in b_obs.items()},
-                    b_actions.long()[mb_inds],
-                    (embedding[r_inds, :] for embedding in encoder_state),
-                )
-                # _, newlogprob, entropy, newvalue = agent.get_action_and_value({k:v[mb_inds] for k,v in b_obs.items()}, b_actions.long()[mb_inds])
+
+       
+                # _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value_cached(
+                #     {k: v[mb_inds] for k, v in b_obs.items()},
+                #     b_actions.long()[mb_inds],
+                #     (embedding[r_inds, :] for embedding in encoder_state),
+                # )
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value({k:v[mb_inds] for k,v in b_obs.items()}, b_actions.long()[mb_inds])
+                
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -392,7 +397,7 @@ if __name__ == "__main__":
             if args.target_kl is not None:
                 if approx_kl > args.target_kl:
                     break
-
+        
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
@@ -408,6 +413,7 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         # print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+        
         if update % 100 == 0 or update == num_updates:
             torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
         if update % 10 == 0 or update == num_updates:
@@ -440,14 +446,11 @@ if __name__ == "__main__":
             
             """
             trajectories : Step,(env,traj)
-            
             episode_returns : (env,traj)
             test_obs['observations'] : (env, node,obs_dim)
 
             """
-
             resulting_traj = np.array(trajectories).transpose(1, 2, 0)  # (env,traj,step)
-           
             rehandle_rate = calculation_metrics(resulting_traj, test_obs['observations'][0])
           
 
