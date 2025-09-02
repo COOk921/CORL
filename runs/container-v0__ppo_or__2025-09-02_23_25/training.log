@@ -1,0 +1,202 @@
+[Train] global_step=26112
+avg_episodic_return=-14.515775680541992
+max_episodic_return=-13.688563346862793
+avg_episodic_length=51.0
+
+[Train] global_step=52224
+avg_episodic_return=-15.031637191772461
+max_episodic_return=-14.21286392211914
+avg_episodic_length=51.0
+
+[Train] global_step=78336
+avg_episodic_return=-14.966682434082031
+max_episodic_return=-14.1524076461792
+avg_episodic_length=51.0
+
+[Train] global_step=104448
+avg_episodic_return=-14.632682800292969
+max_episodic_return=-13.86340045928955
+avg_episodic_length=51.0
+
+[Train] global_step=130560
+avg_episodic_return=-14.258566856384277
+max_episodic_return=-13.477155685424805
+avg_episodic_length=51.0
+
+[Train] global_step=156672
+avg_episodic_return=-14.543190956115723
+max_episodic_return=-13.784979820251465
+avg_episodic_length=51.0
+
+[Train] global_step=182784
+avg_episodic_return=-14.886260986328125
+max_episodic_return=-14.087136268615723
+avg_episodic_length=51.0
+
+[Train] global_step=208896
+avg_episodic_return=-14.591007232666016
+max_episodic_return=-13.807849884033203
+avg_episodic_length=51.0
+
+[Train] global_step=235008
+avg_episodic_return=-14.331727981567383
+max_episodic_return=-13.585094451904297
+avg_episodic_length=51.0
+
+[Train] global_step=261120
+avg_episodic_return=-14.614514350891113
+max_episodic_return=-13.871536254882812
+avg_episodic_length=51.0
+
+--------------------------------------------[test] episodic_return=-12.464702731966973
+avg_episodic_return=-12.841673440027236
+max_episodic_return=-12.464702731966973
+avg_episodic_length=51.0
+rehandle_rate=0.4246575342465753
+tau=0.025117739403453687
+rho=-0.1596090320828997
+--------------------------------------------
+
+[Train] global_step=287232
+avg_episodic_return=-14.312599182128906
+max_episodic_return=-13.559825897216797
+avg_episodic_length=51.0
+
+[Train] global_step=313344
+avg_episodic_return=-14.181797981262207
+max_episodic_return=-13.43438720703125
+avg_episodic_length=51.0
+
+[Train] global_step=339456
+avg_episodic_return=-14.469151496887207
+max_episodic_return=-13.7211332321167
+avg_episodic_length=51.0
+
+[Train] global_step=365568
+avg_episodic_return=-14.927274703979492
+max_episodic_return=-14.12394905090332
+avg_episodic_length=51.0
+
+[Train] global_step=391680
+avg_episodic_return=-14.351095199584961
+max_episodic_return=-13.574141502380371
+avg_episodic_length=51.0
+
+[Train] global_step=417792
+avg_episodic_return=-14.188465118408203
+max_episodic_return=-13.417640686035156
+avg_episodic_length=51.0
+
+[Train] global_step=443904
+avg_episodic_return=-14.356468200683594
+max_episodic_return=-13.565799713134766
+avg_episodic_length=51.0
+
+[Train] global_step=470016
+avg_episodic_return=-14.280330657958984
+max_episodic_return=-13.549081802368164
+avg_episodic_length=51.0
+
+[Train] global_step=496128
+avg_episodic_return=-13.971443176269531
+max_episodic_return=-13.226848602294922
+avg_episodic_length=51.0
+
+[Train] global_step=522240
+avg_episodic_return=-14.310527801513672
+max_episodic_return=-13.586831092834473
+avg_episodic_length=51.0
+
+--------------------------------------------[test] episodic_return=-12.846685760617255
+avg_episodic_return=-13.165670477497576
+max_episodic_return=-12.846685760617255
+avg_episodic_length=51.0
+rehandle_rate=0.4230769230769231
+tau=-0.227629513343799
+rho=-0.025729671025838275
+--------------------------------------------
+
+[Train] global_step=548352
+avg_episodic_return=-14.122944831848145
+max_episodic_return=-13.423154830932617
+avg_episodic_length=51.0
+
+[Train] global_step=574464
+avg_episodic_return=-13.984477996826172
+max_episodic_return=-13.308454513549805
+avg_episodic_length=51.0
+
+[Train] global_step=600576
+avg_episodic_return=-13.95149040222168
+max_episodic_return=-13.245158195495605
+avg_episodic_length=51.0
+
+[Train] global_step=626688
+avg_episodic_return=-14.001363754272461
+max_episodic_return=-13.327282905578613
+avg_episodic_length=51.0
+
+[Train] global_step=652800
+avg_episodic_return=-13.903182029724121
+max_episodic_return=-13.245574951171875
+avg_episodic_length=51.0
+
+[Train] global_step=678912
+avg_episodic_return=-14.298580169677734
+max_episodic_return=-13.599069595336914
+avg_episodic_length=51.0
+
+[Train] global_step=705024
+avg_episodic_return=-13.754944801330566
+max_episodic_return=-13.081097602844238
+avg_episodic_length=51.0
+
+[Train] global_step=731136
+avg_episodic_return=-13.797027587890625
+max_episodic_return=-13.154685974121094
+avg_episodic_length=51.0
+
+[Train] global_step=757248
+avg_episodic_return=-14.048713684082031
+max_episodic_return=-13.42337417602539
+avg_episodic_length=51.0
+
+[Train] global_step=783360
+avg_episodic_return=-13.3702974319458
+max_episodic_return=-12.764118194580078
+avg_episodic_length=51.0
+
+--------------------------------------------[test] episodic_return=-12.710235877037048
+avg_episodic_return=-13.063917999446392
+max_episodic_return=-12.710235877037048
+avg_episodic_length=51.0
+rehandle_rate=0.27058823529411763
+tau=-0.455259026687598
+rho=-0.04146793972577945
+--------------------------------------------
+
+[Train] global_step=809472
+avg_episodic_return=-14.105676651000977
+max_episodic_return=-13.475133895874023
+avg_episodic_length=51.0
+
+[Train] global_step=835584
+avg_episodic_return=-14.052440643310547
+max_episodic_return=-13.424394607543945
+avg_episodic_length=51.0
+
+[Train] global_step=861696
+avg_episodic_return=-13.70438003540039
+max_episodic_return=-13.100723266601562
+avg_episodic_length=51.0
+
+[Train] global_step=887808
+avg_episodic_return=-13.900680541992188
+max_episodic_return=-13.260841369628906
+avg_episodic_length=51.0
+
+[Train] global_step=913920
+avg_episodic_return=-13.523122787475586
+max_episodic_return=-12.91868782043457
+avg_episodic_length=51.0
+

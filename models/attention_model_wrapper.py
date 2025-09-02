@@ -21,32 +21,44 @@ def graph_data(data):
     for b in range(batch):
         batch_node_features = node_features[b]
       
-        selected_features = batch_node_features[:, 2:5]
         # 初始化边索引和边特征列表
         edge_index_list = []
         edge_attr_list = []
+
+        # 情况1：第3列，第4列，第5列的值完全相同，按第6列从小到大建边
+        # 提取第3,4,5列特征
+        selected_features_1 = batch_node_features[:, 2:5]
+        unique_features_1, inverse_indices_1 = torch.unique(selected_features_1, dim=0, return_inverse=True)
         
-        unique_features, inverse_indices = torch.unique(selected_features, dim=0, return_inverse=True)
-        
-        for group_id in range(len(unique_features)):
-            group_indices = torch.where(inverse_indices == group_id)[0]
+        for group_id in range(len(unique_features_1)):
+            group_indices = torch.where(inverse_indices_1 == group_id)[0]
             num_nodes_in_group = len(group_indices)
             
             if num_nodes_in_group > 1:
-                # 生成全连接的边索引
-                source_nodes = group_indices.repeat_interleave(num_nodes_in_group)
-                target_nodes = group_indices.repeat(num_nodes_in_group)
-                # 排除自环边
-                mask = source_nodes != target_nodes
-                source_nodes = source_nodes[mask]
-                target_nodes = target_nodes[mask]
-                
+                # 按第6列（索引为5）的值排序
+                sorted_indices = group_indices[torch.argsort(batch_node_features[group_indices, 5])]
+                # 按排序后的顺序建立边
+                source_nodes = sorted_indices[:-1]
+                target_nodes = sorted_indices[1:]
                 edge_index_list.append(torch.stack([source_nodes, target_nodes], dim=0))
-                
-                # 计算边的特征（距离）
-                # edge_attr = torch.norm(batch_node_features[source_nodes] - batch_node_features[target_nodes], p=2, dim=-1).view(-1, 1)
-                # edge_attr_list.append(edge_attr)
+
+        # 情况2：第3列，第4列，第6列的值完全相同，按第5列从小到大建边
+        # 提取第3,4,6列特征
+        selected_features_2 = torch.cat([batch_node_features[:, 2:4], batch_node_features[:, 5:6]], dim=1)
+        unique_features_2, inverse_indices_2 = torch.unique(selected_features_2, dim=0, return_inverse=True)
         
+        for group_id in range(len(unique_features_2)):
+            group_indices = torch.where(inverse_indices_2 == group_id)[0]
+            num_nodes_in_group = len(group_indices)
+            
+            if num_nodes_in_group > 1:
+                # 按第5列（索引为4）的值排序
+                sorted_indices = group_indices[torch.argsort(batch_node_features[group_indices, 4])]
+                # 按排序后的顺序建立边
+                source_nodes = sorted_indices[:-1]
+                target_nodes = sorted_indices[1:]
+                edge_index_list.append(torch.stack([source_nodes, target_nodes], dim=0))
+
         if edge_index_list:
             edge_index = torch.cat(edge_index_list, dim=1).long()
             # edge_attr = torch.cat(edge_attr_list, dim=0)
@@ -58,9 +70,12 @@ def graph_data(data):
         data_graph = Data(x=batch_node_features, edge_index=edge_index, ) #edge_attr=edge_attr
         data_graphs.append(data_graph)
         
+        
     batch_graph = Batch.from_data_list(data_graphs)
 
     return batch_graph
+
+
 
 
 class Problem:
@@ -92,38 +107,35 @@ class Backbone(nn.Module):
         self.decoder = Decoder(
             embedding_dim, self.embedding.context_dim, n_heads, self.problem, tanh_clipping
         )
-        
+        self.gat = GAT(6, self.embedding_dim,self.embedding_dim, self.embedding_dim)
 
     def forward(self, obs):
-        state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
-        input = state.states["observations"]
+        # state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
+        # input = state.states["observations"]
 
+        # embedding = self.embedding(input)
+        # encoded_inputs, _ = self.encoder(embedding)
 
-        embedding = self.embedding(input)
-        encoded_inputs, _ = self.encoder(embedding)
+        # # decoding
+        # cached_embeddings = self.decoder._precompute(encoded_inputs)
+        # logits, glimpse = self.decoder.advance(cached_embeddings, state)
 
-        # decoding
-        cached_embeddings = self.decoder._precompute(encoded_inputs)
-        logits, glimpse = self.decoder.advance(cached_embeddings, state)
-
-        return logits, glimpse
+        return #logits, glimpse
 
     def encode(self, obs):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
         input = state.states["observations"]        # [batch, num_node, dim]
         
         """构建图模型 """
-        graph = graph_data(input).to(self.device)
-        # graph = obs["graph_data"]
-        gat = GAT(graph.x.shape[-1], self.embedding_dim,self.embedding_dim, self.embedding_dim).to(self.device)
-        out = gat(graph)
+        # graph = graph_data(input)
+        # out = self.gat(graph)
 
-        embedding = out.view(input.shape[0], input.shape[1], -1)
-        encoded_inputs =  embedding
+        # embedding = out.view(input.shape[0], input.shape[1], -1)
+        # encoded_inputs =  embedding
 
         """embedding + MHA """
-        # embedding = self.embedding(input)
-        # encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
+        embedding = self.embedding(input)
+        encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
         cached_embeddings = self.decoder._precompute(encoded_inputs)  
 
         return cached_embeddings
@@ -165,10 +177,16 @@ class Agent(nn.Module):
         self.actor = Actor()
 
     def forward(self, x):  # only actor
-        x = self.backbone(x)
+        # x = self.backbone(x)
+        # logits = self.actor(x)
+        # action = logits.max(2)[1]
+        # return action, logits
+        state = self.backbone.encode(x)
+        x = self.backbone.decode(x, state)
         logits = self.actor(x)
         action = logits.max(2)[1]
         return action, logits
+        
 
     def get_value(self, x):
         x = self.backbone(x)
