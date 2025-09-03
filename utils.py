@@ -2,6 +2,8 @@ import pdb
 from scipy.stats import kendalltau, spearmanr
 import numpy as np
 from torch_geometric.data import Data
+import torch
+from torch_geometric.data import Data, Batch
 
 def _count_increasing_pairs(arr):
     """
@@ -120,3 +122,59 @@ def calculation_metrics(sequence, feature):
     return rate
 
 
+def single_batch_graph_data(data):
+    # 现在 data 的形状为 (num_nodes, dim)
+    if isinstance(data, np.ndarray):
+        node_features = torch.tensor(data, dtype=torch.float)
+    else:
+        node_features = data
+
+    # 初始化边索引和边特征列表
+    edge_index_list = []
+    edge_attr_list = []
+   
+    # 情况1：第3列，第4列，第5列的值完全相同，按第6列从小到大建边
+    # 提取第3,4,5列特征
+    selected_features_1 = node_features[:, 2:5]
+    unique_features_1, inverse_indices_1 = torch.unique(selected_features_1, dim=0, return_inverse=True)
+    
+    for group_id in range(len(unique_features_1)):
+        group_indices = torch.where(inverse_indices_1 == group_id)[0]
+        num_nodes_in_group = len(group_indices)
+        
+        if num_nodes_in_group > 1:
+            # 按第6列（索引为5）的值排序
+            sorted_indices = group_indices[torch.argsort(node_features[group_indices, 5])]
+            # 按排序后的顺序建立边
+            source_nodes = sorted_indices[:-1]
+            target_nodes = sorted_indices[1:]
+            edge_index_list.append(torch.stack([source_nodes, target_nodes], dim=0))
+
+    # 情况2：第3列，第4列，第6列的值完全相同，按第5列从小到大建边
+    # 提取第3,4,6列特征
+    selected_features_2 = torch.cat([node_features[:, 2:4], node_features[:, 5:6]], dim=1)
+    unique_features_2, inverse_indices_2 = torch.unique(selected_features_2, dim=0, return_inverse=True)
+    
+    for group_id in range(len(unique_features_2)):
+        group_indices = torch.where(inverse_indices_2 == group_id)[0]
+        num_nodes_in_group = len(group_indices)
+        
+        if num_nodes_in_group > 1:
+            # 按第5列（索引为4）的值排序
+            sorted_indices = group_indices[torch.argsort(node_features[group_indices, 4])]
+            # 按排序后的顺序建立边
+            source_nodes = sorted_indices[:-1]
+            target_nodes = sorted_indices[1:]
+            edge_index_list.append(torch.stack([source_nodes, target_nodes], dim=0))
+
+    if edge_index_list:
+        edge_index = torch.cat(edge_index_list, dim=1).long()
+        # edge_attr = torch.cat(edge_attr_list, dim=0)
+    else:
+        # 如果没有满足条件的边，创建空的边索引和边特征
+        edge_index = torch.empty((2, 0), dtype=torch.long)
+        # edge_attr = torch.empty((0, 1), dtype=torch.float)
+
+    data_graph = Data(x=node_features, edge_index=edge_index)  # edge_attr=edge_attr
+    # 因为现在只有一个图，不需要再使用 Batch 包装
+    return data_graph

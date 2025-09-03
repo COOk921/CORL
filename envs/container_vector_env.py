@@ -22,33 +22,51 @@ root_dir = "data/container_data.pkl"
 model_path = "./discriminator/model/discriminator.pth"
 
 
-def get_data(max_nodes,data_path="./data/processed_container_data.pkl",  mode = 'train'):
+def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode = 'train'):
 
     global _DATA_CACHE
     selected_columns = ['Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer']
 
     if _DATA_CACHE is None:
-        print("--- Loading data from file (will happen only ONCE) ---")
+        print("--- Loading data and deal with graph (will happen only ONCE) ---")
         with open(data_path, 'rb') as f:
             data = pickle.load(f)
-
+      
         data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
-
-        _DATA_CACHE = data
         keys = list(data.keys())
+        for key in keys:
+          
+            batch_g = data[tuple(key)]['graph'] 
+            batch_g.x = batch_g.x[:max_nodes]
+            batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[0] < max_nodes]
+            batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[1] < max_nodes]
+            
+            current_nodes = batch_g.x.shape[0]
+            if current_nodes < max_nodes:
+                padding_size = max_nodes - current_nodes
+                padding_features = torch.zeros(padding_size, batch_g.x.shape[1], dtype=batch_g.x.dtype, device=batch_g.x.device)
+                batch_g.x = torch.cat([batch_g.x, padding_features], dim=0)
+
+            data[tuple(key)]['graph'] = batch_g
+    
+        _DATA_CACHE = data
+        
+
     else:
         keys = list(_DATA_CACHE.keys())
+
     
     if mode == 'train':
         key = np.random.default_rng().choice(keys)
 
     df = _DATA_CACHE[tuple(key)]
-    nodes = df[selected_columns].to_numpy()[:max_nodes]
+    nodes = df['data'][selected_columns].to_numpy()[:max_nodes]
+    graph = df['graph']
     
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
     
-    return nodes
+    return nodes,graph
 
 def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,model_path = model_path):
 
@@ -126,63 +144,6 @@ def read_pkl(file_path):
     return data
 
 
-def graph_data(data):
-    batch, num_nodes, dim = data.shape
-
-    if isinstance(data, np.ndarray):
-        node_features = torch.tensor(data, dtype=torch.float)
-    else:
-        node_features = data
-
-    source_nodes = []
-    target_nodes = []
-    num_edges = num_nodes * 5  # 随机建立num_nodes*5条边
-    data_graphs = []
-    for b in range(batch):
-        batch_node_features = node_features[b]
-      
-        selected_features = batch_node_features[:, 2:5]
-        # 初始化边索引和边特征列表
-        edge_index_list = []
-        edge_attr_list = []
-        
-        unique_features, inverse_indices = torch.unique(selected_features, dim=0, return_inverse=True)
-        
-        for group_id in range(len(unique_features)):
-            group_indices = torch.where(inverse_indices == group_id)[0]
-            num_nodes_in_group = len(group_indices)
-            
-            if num_nodes_in_group > 1:
-                # 生成全连接的边索引
-                source_nodes = group_indices.repeat_interleave(num_nodes_in_group)
-                target_nodes = group_indices.repeat(num_nodes_in_group)
-                # 排除自环边
-                mask = source_nodes != target_nodes
-                source_nodes = source_nodes[mask]
-                target_nodes = target_nodes[mask]
-                
-                edge_index_list.append(torch.stack([source_nodes, target_nodes], dim=0))
-                
-                # 计算边的特征（距离）
-                # edge_attr = torch.norm(batch_node_features[source_nodes] - batch_node_features[target_nodes], p=2, dim=-1).view(-1, 1)
-                # edge_attr_list.append(edge_attr)
-        
-        if edge_index_list:
-            edge_index = torch.cat(edge_index_list, dim=1).long()
-            # edge_attr = torch.cat(edge_attr_list, dim=0)
-        else:
-            # 如果没有满足条件的边，创建空的边索引和边特征
-            edge_index = torch.empty((2, 0), dtype=torch.long)
-            # edge_attr = torch.empty((0, 1), dtype=torch.float)
-
-        data_graph = Data(x=batch_node_features, edge_index=edge_index, ) #edge_attr=edge_attr
-        data_graphs.append(data_graph)
-        
-    batch_graph = Batch.from_data_list(data_graphs)
-
-    return batch_graph
-
-
 
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
@@ -203,10 +164,10 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "last_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "is_initial_action": spaces.Discrete(1),
-            # "graph_data": spaces.Graph(
-            #     node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
-            #     edge_space=None
-            #     )
+            "graph_data": spaces.Graph(
+                node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
+                edge_space=None
+                )
 
         }
 
@@ -229,8 +190,8 @@ class ContainerVectorEnv(gym.Env):
             self._load_orders()
         else:
             self._generate_orders()
-
-        # self.graph_data = graph_data(self.nodes)
+        
+        
         self.state = self._update_state()
         self.info = {}
         self.done = False
@@ -238,7 +199,7 @@ class ContainerVectorEnv(gym.Env):
 
     def _load_orders(self):
         # Load container features, assuming dataset provides (max_nodes, dim) arrays
-        self.nodes = get_data(max_nodes = self.max_nodes, mode='train')
+        self.nodes, self.graph = get_data(max_nodes = self.max_nodes, mode='train')
         
         
     def _generate_orders(self):
@@ -304,7 +265,7 @@ class ContainerVectorEnv(gym.Env):
             "first_node_idx": self.first,
             "last_node_idx": self.last,
             "is_initial_action": self.num_steps == 0,
-            # "graph_data": self.graph_data ,
+            "graph_data": self.graph  ,
         }
         return obs
 

@@ -161,7 +161,6 @@ if __name__ == "__main__":
         entry_point=args.env_entry_point,
     )
     
-   
     # training env setup
     envs = SyncVectorEnv([make_env(args.env_id, args.seed + i) for i in range(args.num_envs)])
     
@@ -337,9 +336,9 @@ if __name__ == "__main__":
                 mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
                 r_inds = np.tile(np.arange(envsperbatch), args.num_steps)
                 
-                cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
-                # cur_obs = {k: [v[i] for i in mbenvinds] if k == "graph_data" else v[mbenvinds] for k, v in obs[0].items()}
-                             
+                # cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
+                cur_obs = {k: [v[i] for i in mbenvinds] if k == "graph_data" else v[mbenvinds] for k, v in obs[0].items()}
+               
                 encoder_state = agent.backbone.encode(cur_obs)
 
                 _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value_cached(

@@ -5,8 +5,13 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 
-root_dir = "./data/container_data.pkl"
-output_filename = "./data/processed_container_data.pkl"
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import single_batch_graph_data
+
+root_dir = "./data/container_data2.pkl"
+output_filename = "./data/processed_container_data2.pkl"
 
 continuous_features = ['Unit Weight (kg)']
 categorical_features = ['Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer', ]
@@ -58,6 +63,16 @@ for key, df in data.items():
     # 存储处理结果和该次处理的词汇表
     processed_data_local[key] = processed_df
     local_vocabs_for_inspection[key] = local_vocab_mappings
+    import pdb
+    
+    batch_graph = single_batch_graph_data(processed_df.iloc[:, -6:].to_numpy())
+
+    processed_data_local[key] = {
+        'data':processed_df,
+        'graph':batch_graph
+    }
+
+   
 
 print("\n--- Step 3: Verifying the locally processed data ---")
 key1 = list(data.keys())[0]
@@ -74,7 +89,7 @@ print("\nVerifying the saved file...")
 with open(output_filename, 'rb') as f:
     reloaded_data = pickle.load(f)
 
-print("File reloaded successfully.")
-print(f"Data for key '{key1}' in reloaded file:")
-print(reloaded_data[key1].head())
-print(reloaded_data[key1].shape)
+# print("File reloaded successfully.")
+# print(f"Data for key '{key1}' in reloaded file:")
+# print(reloaded_data[key1].head())
+# print(reloaded_data[key1].shape)
