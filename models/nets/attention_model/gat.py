@@ -11,7 +11,7 @@ from torch_geometric.nn import GATConv
 
 
 class GAT(nn.Module):
-    def __init__(self, in_channels, embed_dim, hidden_dim, out_dim, num_layers=2, dropout=0.2, heads=4):
+    def __init__(self, in_channels, embed_dim, hidden_dim, out_dim, num_layers=2, dropout=0.3, heads=2):
        
         super().__init__()
         self.dropout = dropout

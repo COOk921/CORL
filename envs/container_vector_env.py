@@ -26,7 +26,7 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
 
     global _DATA_CACHE
     selected_columns = ['Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer']
-
+   
     if _DATA_CACHE is None:
         print("--- Loading data and deal with graph (will happen only ONCE) ---")
         with open(data_path, 'rb') as f:
@@ -35,7 +35,7 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
         data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
         keys = list(data.keys())
         for key in keys:
-          
+            # 对图进行截取,只保留max_nodes个节点
             batch_g = data[tuple(key)]['graph'] 
             batch_g.x = batch_g.x[:max_nodes]
             batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[0] < max_nodes]
@@ -50,8 +50,6 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
             data[tuple(key)]['graph'] = batch_g
     
         _DATA_CACHE = data
-        
-
     else:
         keys = list(_DATA_CACHE.keys())
 
@@ -61,6 +59,13 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
 
     df = _DATA_CACHE[tuple(key)]
     nodes = df['data'][selected_columns].to_numpy()[:max_nodes]
+    # add index column
+    indices = np.arange(len(nodes)).reshape(-1, 1)
+    nodes = np.hstack((indices, nodes))
+    np.random.shuffle(nodes)  
+
+    # pdb.set_trace()
+   
     graph = df['graph']
     
     if len(nodes) < max_nodes:
@@ -131,6 +136,28 @@ def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
         sim[valid_mask] = (cos_sim + 1) / 2
     return sim
 
+def rule_reward(dest_node,prev_node):
+    batch,n_traj,dim = dest_node.shape
+    reward = np.zeros((batch,n_traj))
+
+    
+    """ 规则奖励: yard,bay,col 相同 且layer满足要求 基于reward=0,否则reward=-1 """
+    # condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
+    # condition2 = dest_node[..., -1] < prev_node[..., -1]
+    # valid_condition = condition1 & condition2
+    # reward.fill(-1)
+    # reward[valid_condition] = 0
+    """顺序奖励: 根据实际操作顺序,如果正确则reward=0,否则reward=-1"""
+    dest_sequence = dest_node[..., -1]  #[batch,n_traj]
+    prev_sequence = prev_node[..., -1]
+    # 比较 dest_sequence 和 prev_sequence 是否按顺序递增
+    valid_condition = (dest_sequence > prev_sequence)
+    reward.fill(-1)
+    reward[valid_condition] = 0
+
+    return reward 
+
+
 def assign_env_config(self, kwargs):
     """
     Set self.key = value, for each key in kwargs
@@ -147,9 +174,9 @@ def read_pkl(file_path):
 
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
-        self.max_nodes = 50
-        self.n_traj = 50
-        self.dim = 6  # Default feature dimension, override via kwargs
+        self.max_nodes = 20
+        self.n_traj = 20
+        self.dim = 6 + 1  # Default feature dimension, override via kwargs
         self.hidden_dim = 256
         self.eval_data = True
         self.eval_partition = "test"

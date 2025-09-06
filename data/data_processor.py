@@ -63,8 +63,7 @@ for key, df in data.items():
     # 存储处理结果和该次处理的词汇表
     processed_data_local[key] = processed_df
     local_vocabs_for_inspection[key] = local_vocab_mappings
-    import pdb
-    
+   
     batch_graph = single_batch_graph_data(processed_df.iloc[:, -6:].to_numpy())
 
     processed_data_local[key] = {

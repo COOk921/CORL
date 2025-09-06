@@ -58,6 +58,7 @@ class AttentionScore(nn.Module):
             logits = u
 
         logits[mask.expand_as(logits)] = float("-inf")  # masked after clipping
+        
         return logits
 
 

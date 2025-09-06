@@ -18,8 +18,9 @@ def load_and_process_data(file_path, num_samples=200):
 
     # 合并所有的DataFrame
     dfs = list((data).values())
-    # 移除需要忽略的特征列
-    dfs = [df.drop(columns=['Unit Nbr', 'Time Completed'], errors='ignore') for df in dfs]
+
+    
+    dfs = [df['data'].drop(columns=['Unit Nbr', 'Time Completed'], errors='ignore') for df in dfs]
     merged_df = pd.concat(dfs, ignore_index=True)
 
     # 定义一个数组，size为key的数量+1，记录每个key对应数据在合并后DataFrame中的起始和终止位置

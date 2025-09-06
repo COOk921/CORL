@@ -180,7 +180,7 @@ class Decoder(nn.Module):
     def advance(self, cached_embeddings, state):
 
         node_embeddings, graph_context, glimpse_K, glimpse_V, logit_K = cached_embeddings
-
+       
         # Compute context node embedding: [graph embedding| prev node| problem-state-context]
         # [batch, 1, context dim]
         context = self.context(node_embeddings, state)
@@ -196,7 +196,7 @@ class Decoder(nn.Module):
 
         # Compute logits (unnormalized log_p)
         logits, glimpse = self.calc_logits(query, glimpse_K, glimpse_V, logit_K, mask)
-
+       
         return logits, glimpse
 
     def calc_logits(self, query, glimpse_K, glimpse_V, logit_K, mask):
@@ -207,5 +207,5 @@ class Decoder(nn.Module):
         glimpse = self.glimpse(query, glimpse_K, glimpse_V, mask)
 
         logits = self.pointer(glimpse, logit_K, mask)
-
+        
         return logits, glimpse

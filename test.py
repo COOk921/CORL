@@ -1,90 +1,135 @@
+# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppopy
+
+import time
+
+from scipy.stats import kendalltau, spearmanr
+import logging
+from tqdm import tqdm
+import gym
+
+import numpy as np
 import torch
-from torch_geometric.data import Data, Batch
-from torch_geometric.nn import GCNConv
-import torch.nn.functional as F
 
-# 假设输入
-batch_size = 128
-num_samples = 100     # 每个 batch 内 100 个西瓜
-num_features = 6      # 每个西瓜 6 个特征
-num_feature_values = 10  # 假设所有特征总共有 10 种取值（类别id范围 0~9）
+import time
+import warnings
+warnings.filterwarnings("ignore")
 
-# 随机生成类别型特征
-# 这里每个西瓜的 6 个特征值都是 0~9 的整数
-x = torch.randint(0, num_feature_values, (batch_size, num_samples, num_features))  # [128, 100, 6]
-print(x[0,:3,:])
+from utils import calculation_metrics
+from models.attention_model_wrapper import Agent
+from wrappers.syncVectorEnvPomo import SyncVectorEnv
+from wrappers.syncVectorEnvPomo import SyncVectorEnv
+from wrappers.recordWrapper import RecordEpisodeStatistics
 
-def build_graph_for_batch(sample_features, num_feature_values):
+import pdb
+
+if __name__ == "__main__":
+  
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ckpt_path = './runs/container-v0__ppo_or__2025-09-06_14_25/ckpt/20.pt'
+    agent = Agent(device=device, name='container').to(device)
+    agent.load_state_dict(torch.load(ckpt_path))
+    env_id = 'container-v0'
+    num_steps = 21
+    num_envs = 50
+    n_traj = 50
+
+    env_entry_point = 'envs.container_vector_env:ContainerVectorEnv'
+    seed = 0
+
+    gym.envs.register(
+        id=env_id,
+        entry_point=env_entry_point,
+    )
+
+    def make_env(env_id, seed, cfg={}):
+        def thunk():
+            env = gym.make(env_id, **cfg)
+            env = RecordEpisodeStatistics(env)
+            env.seed(seed)
+            env.action_space.seed(seed)
+            env.observation_space.seed(seed)
+            return env
+        return thunk
+
+    envs = SyncVectorEnv(  [make_env(env_id, seed, dict(n_traj=n_traj)) for i in range(num_envs) ]  )
+
+    
+    trajectories = []
+    agent.eval()
+    obs = envs.reset()
+    for step in range(0, num_steps):
+        # ALGO LOGIC: action logic
+        with torch.no_grad():
+            action, logits = agent(obs)
+        obs, reward, done, info = envs.step(action.cpu().numpy())
+        trajectories.append(action.cpu().numpy())
+
+    # resulting_traj = np.array(trajectories)[:,0,0]
+    # print(trajectories)
+   
+    # 
+    
     """
-    输入：sample_features [num_samples, num_features]
-    输出：一个 PyG Data 图对象
+    trajectories : Step,(env,traj)
+    episode_returns : (env,traj)
+    test_obs['observations'] : (env, node,obs_dim)
+
     """
-    num_samples = sample_features.size(0)
+    
+    resulting_traj = np.array(trajectories).transpose(1, 2, 0)  # (env,traj,step)
+    # rehandle_rate = calculation_metrics(resulting_traj, test_obs['observations'][0])
+   
+    
+    target  = np.concatenate([  np.arange(resulting_traj.shape[-1] -1), [0]  ])
+    target = np.tile(target, (resulting_traj.shape[0], resulting_traj.shape[1], 1))  #(env,traj,step)
 
-    # 节点：西瓜 + 特征值
-    # 0 ~ num_samples-1 : 西瓜节点
-    # num_samples ~ num_samples+num_feature_values-1 : 特征值节点
-    total_nodes = num_samples + num_feature_values
-    edge_index = []
+    # tau, _ = kendalltau(target, resulting_traj)
+    tau_mean = 0
+    for i in range(resulting_traj.shape[0]):
+        max_traj = -1
+        for j in range(resulting_traj.shape[1]):
+            tau, _ = kendalltau(target[i,j], resulting_traj[i,j])
+            max_traj = max(max_traj, tau)
+        tau_mean += max_traj
+    tau_mean /= resulting_traj.shape[0]
+    print("tau_mean:", tau_mean)
 
-    # 构建边
-    for i in range(num_samples):
-        for f in range(sample_features.size(1)):
-            fv = sample_features[i, f].item()
-            fv_node = num_samples + fv
-            edge_index.append([i, fv_node])
-            edge_index.append([fv_node, i])  # 双向
+    rho_mean = 0
+    for i in range(resulting_traj.shape[0]):
+        max_traj = -1
+        for j in range(resulting_traj.shape[1]):
+            rho, _ = spearmanr(target[i,j], resulting_traj[i,j])
+            max_traj = max(max_traj, rho)
+        rho_mean += max_traj
+    rho_mean /= resulting_traj.shape[0]
 
-    edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-
-    # 初始特征: 用 one-hot，简单起见
-    x_nodes = torch.eye(total_nodes)
-
-    return Data(x=x_nodes, edge_index=edge_index)
-
-
-# --- 构建 batch ---
-graphs = []
-for b in range(batch_size):
-    g = build_graph_for_batch(x[b], num_feature_values)
-    graphs.append(g)
-
-# 合并成一个 Batch
-batch_graph = Batch.from_data_list(graphs)
-print(batch_graph)
-# >>> Batch(x=[128*110, 110], edge_index=[2, ...], batch=[128*110])
-
-
-# --- 定义 GCN 模型 ---
-class GCN(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels):
-        super().__init__()
-        self.conv1 = GCNConv(in_channels, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, out_channels)
-
-    def forward(self, x, edge_index, batch):
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = self.conv2(x, edge_index)
-        return x
+    print("rho_mean:", rho_mean)
+    # avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))
+    # max_episodic_return = np.mean(np.max(episode_returns, axis=1))
+    # avg_episodic_length = np.mean(episode_lengths)
+    pdb.set_trace()
+    # logging.info(
+    #     "--------------------------------------------"
+    #     f"[test] episodic_return={max_episodic_return}\n"
+    #     f"avg_episodic_return={avg_episodic_return}\n"
+    #     f"max_episodic_return={max_episodic_return}\n"
+    #     f"avg_episodic_length={avg_episodic_length}\n"
+    #     f"rehandle_rate={rehandle_rate}\n"
+    #     f"tau={tau}\n"
+    #     f"rho={rho_mean}\n"
+    #     "--------------------------------------------"
+    # )
+    # logging.info("")
 
 
-# 模型初始化
-in_channels = batch_graph.x.size(1)  # one-hot 维度
-model = GCN(in_channels, hidden_channels=64, out_channels=32)
+    # writer.add_scalar("test/episodic_return_mean", avg_episodic_return, global_step)
+    # writer.add_scalar("test/episodic_return_max", max_episodic_return, global_step)
+    # writer.add_scalar("test/episodic_length", avg_episodic_length, global_step)
 
-# 前向传播
-out = model(batch_graph.x, batch_graph.edge_index, batch_graph.batch)
-print("所有节点 embedding:", out.shape)  # [128*110, 32]
+    # writer.add_scalar("test/rehandle_rate", rehandle_rate, global_step)
+    # writer.add_scalar("test/tau", tau, global_step)
+    # writer.add_scalar("test/rho", rho_mean, global_step)
 
-# 按 batch 分割
-watermelon_emb = []
-start = 0
-for b in range(batch_size):
-    num_nodes = num_samples + num_feature_values
-    wm_nodes = out[start : start + num_samples]  # 前100是西瓜节点
-    watermelon_emb.append(wm_nodes)
-    start += num_nodes
-watermelon_emb = torch.stack(watermelon_emb)  # [128, 100, 32]
 
-print("西瓜 embedding:", watermelon_emb.shape)
+    # envs.close()
+    # writer.close()

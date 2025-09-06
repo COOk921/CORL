@@ -87,7 +87,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--n-traj", type=int, default=50,
+    parser.add_argument("--n-traj", type=int, default=20,
         help="number of trajectories in a vectorized sub-environment")
     parser.add_argument("--n-test", type=int, default=50,
         help="how many test instance")
@@ -249,7 +249,7 @@ if __name__ == "__main__":
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
-
+        
             # ALGO LOGIC: action logic
             with torch.no_grad():
                 action, logprob, _, value, _ = agent.get_action_and_value_cached(
@@ -412,7 +412,7 @@ if __name__ == "__main__":
         # print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         
-        if update % 100 == 0 or update == num_updates:
+        if update % 20 == 0 or update == num_updates:
             torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
         if update % 10 == 0 or update == num_updates:
             agent.eval()

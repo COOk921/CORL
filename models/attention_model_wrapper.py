@@ -16,7 +16,6 @@ def graph_data(data):
 
     source_nodes = []
     target_nodes = []
-    num_edges = num_nodes * 5  # 随机建立num_nodes*5条边
     data_graphs = []
     for b in range(batch):
         batch_node_features = node_features[b]
@@ -124,27 +123,27 @@ class Backbone(nn.Module):
 
     def encode(self, obs):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
-        input = state.states["observations"]        # [batch, num_node, dim]
-
+        input = state.states["observations"][:, :, 1:]      # [batch, num_node, dim]
+        
         """图模型 """
+        # b_graph = obs["graph_data"]       
+        # graph = Batch.from_data_list(b_graph)
+        # # graph = graph_data(input)        
+        # out = self.gat(graph.to(self.device))
        
-        b_graph = obs["graph_data"]       
-        graph = Batch.from_data_list(b_graph)
-        # graph = graph_data(input)        
-        out = self.gat(graph.to(self.device))
-       
-        embedding = out.view(input.shape[0], input.shape[1], -1)
-        encoded_inputs =  embedding
+        # embedding = out.view(input.shape[0], input.shape[1], -1)
+        # encoded_inputs =  embedding
 
         """embedding + MHA """
-        # embedding = self.embedding(input)
-        # encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
+        embedding = self.embedding(input)
+        encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
         cached_embeddings = self.decoder._precompute(encoded_inputs)  
 
         return cached_embeddings
 
     def decode(self, obs, cached_embeddings):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
+       
         logits, glimpse = self.decoder.advance(cached_embeddings, state)
 
         return logits, glimpse
@@ -215,6 +214,7 @@ class Agent(nn.Module):
             x = self.backbone.decode(x, state)
        
         logits = self.actor(x)
+       
         probs = torch.distributions.Categorical(logits=logits)
         if action is None:
             action = probs.sample()

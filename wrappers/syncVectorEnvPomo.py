@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 import numpy as np
 from gym.vector.utils import concatenate, create_empty_array, iterate
 from gym.vector.vector_env import VectorEnv
-from envs.container_vector_env import _MODEL_CACHE,get_discriminator_reward,similarity_reward
+from envs.container_vector_env import _MODEL_CACHE,get_discriminator_reward, rule_reward,similarity_reward
 from discriminator.config import Config
 
 import pdb
@@ -120,13 +120,14 @@ class SyncVectorEnv(VectorEnv):
 
         缩放奖励到[-1, 0]
         """
-       
         # [512,20]
         if num_steps - 1 != 0:
-            discriminator_reward = get_discriminator_reward(dest_node,prev_node, Config.input_dim, Config.hidden_dim, self.device) - 1 
+
+            # discriminator_reward = get_discriminator_reward(dest_node,prev_node, Config.input_dim, Config.hidden_dim, self.device) - 1 
             # sim_reward = similarity_reward(dest_node,prev_node) - 1 
-            self._rewards = discriminator_reward /self.n_traj
-            # self._rewards = (sim_reward + discriminator_reward)/ (2*self.n_traj) 
+            r_reward = rule_reward(dest_node,prev_node)
+            
+            self._rewards = (   r_reward )/ ( self.n_traj ) 
 
         else:
             self._rewards = np.zeros((self.num_envs, self.n_traj), dtype=np.float64)
