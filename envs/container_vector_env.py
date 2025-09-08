@@ -47,6 +47,10 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
                 padding_features = torch.zeros(padding_size, batch_g.x.shape[1], dtype=batch_g.x.dtype, device=batch_g.x.device)
                 batch_g.x = torch.cat([batch_g.x, padding_features], dim=0)
 
+            if 'edge_attr' not in  batch_g:
+                num_edges =  batch_g.edge_index.size(1)
+                batch_g.edge_attr = torch.zeros((num_edges, 1), dtype=torch.float)
+
             data[tuple(key)]['graph'] = batch_g
     
         _DATA_CACHE = data
@@ -62,11 +66,14 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
     # add index column
     indices = np.arange(len(nodes)).reshape(-1, 1)
     nodes = np.hstack((indices, nodes))
-    np.random.shuffle(nodes)  
+    # np.random.shuffle(nodes)  
 
-    # pdb.set_trace()
-   
+    
+    # if 'edge_attr' not in  df['graph']:
+    #     num_edges =  df['graph'].edge_index.size(1)
+    #     df['graph'].edge_attr = torch.zeros((num_edges, 1), dtype=torch.float)
     graph = df['graph']
+     
     
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
@@ -174,8 +181,8 @@ def read_pkl(file_path):
 
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
-        self.max_nodes = 20
-        self.n_traj = 20
+        self.max_nodes = 50
+        self.n_traj = 50
         self.dim = 6 + 1  # Default feature dimension, override via kwargs
         self.hidden_dim = 256
         self.eval_data = True

@@ -126,17 +126,21 @@ class Backbone(nn.Module):
         input = state.states["observations"][:, :, 1:]      # [batch, num_node, dim]
         
         """图模型 """
-        # b_graph = obs["graph_data"]       
-        # graph = Batch.from_data_list(b_graph)
-        # # graph = graph_data(input)        
-        # out = self.gat(graph.to(self.device))
+        b_graph = obs["graph_data"] 
+        for i, data in enumerate(b_graph):
+            if 'edge_attr' not in data:
+                print(f"数据 {i} 不包含 edge_attr")
+      
+        graph = Batch.from_data_list(b_graph)
+        # graph = graph_data(input)        
+        out = self.gat(graph.to(self.device))
        
-        # embedding = out.view(input.shape[0], input.shape[1], -1)
-        # encoded_inputs =  embedding
+        embedding = out.view(input.shape[0], input.shape[1], -1)
+        encoded_inputs =  embedding
 
         """embedding + MHA """
-        embedding = self.embedding(input)
-        encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
+        # embedding = self.embedding(input)
+        # encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
         cached_embeddings = self.decoder._precompute(encoded_inputs)  
 
         return cached_embeddings

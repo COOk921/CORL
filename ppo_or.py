@@ -87,7 +87,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--n-traj", type=int, default=20,
+    parser.add_argument("--n-traj", type=int, default=50,
         help="number of trajectories in a vectorized sub-environment")
     parser.add_argument("--n-test", type=int, default=50,
         help="how many test instance")

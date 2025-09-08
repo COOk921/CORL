@@ -9,6 +9,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import single_batch_graph_data
+import pdb
 
 root_dir = "./data/container_data2.pkl"
 output_filename = "./data/processed_container_data2.pkl"
@@ -31,11 +32,11 @@ processed_data_local = {}
 # 用于存储每个DataFrame独立的词汇表，以供检查
 local_vocabs_for_inspection = {}
 
+pdb.set_trace()
+"""原始建图方法"""
 for key, df in data.items():
     #print(f"\nProcessing data locally for key: {key}")
     processed_df = pd.DataFrame(index=df.index)
-    
-
     if 'Unit Nbr' in df.columns:
         processed_df['Unit Nbr'] = df['Unit Nbr']
     if 'Time Completed' in df.columns:
@@ -71,7 +72,7 @@ for key, df in data.items():
         'graph':batch_graph
     }
 
-   
+
 
 print("\n--- Step 3: Verifying the locally processed data ---")
 key1 = list(data.keys())[0]
