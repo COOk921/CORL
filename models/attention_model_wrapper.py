@@ -127,9 +127,6 @@ class Backbone(nn.Module):
         
         """图模型 """
         b_graph = obs["graph_data"] 
-        for i, data in enumerate(b_graph):
-            if 'edge_attr' not in data:
-                print(f"数据 {i} 不包含 edge_attr")
       
         graph = Batch.from_data_list(b_graph)
         # graph = graph_data(input)        

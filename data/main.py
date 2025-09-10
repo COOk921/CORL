@@ -222,7 +222,7 @@ def build_graph_from_pairs(
 
 def read_data(file_path: str,continuous_features:list,categorical_features:list) -> dict:
     with open(file_path, 'rb') as f:
-        data = pickle.load(f)
+        data = pd.read_pickle(f)
     data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
     
     processed_data_local = {}
@@ -377,8 +377,8 @@ if __name__ == '__main__':
     HIDDEN_DIM = 128        # 模型隐藏层大小
    
     # 路径
-    READ_PATH = "./data/container_data2.pkl"
-    WRITE_PATH = "./data/processed_container_data2.pkl"
+    READ_PATH = "./data/container_data_cluster.pkl"
+    WRITE_PATH = "./data/processed_container_data_cluster.pkl"
     # 读取数据
     data = read_data(READ_PATH,continuous_features,categorical_features)
 
@@ -399,11 +399,11 @@ if __name__ == '__main__':
 
     
     # --- 4. 查看结果 ---
-    print("\n\n#################### 最终输出 ####################")
-    for key, value in final_output.items():
-        print(f"\n--- 结果 for '{key}' ---")
-        print("  - 'data' (原始DataFrame):")
-        print(value['data'].head())
-        print("\n  - 'graph' (PyG图对象):")
-        print(value['graph'])
-        print(f"    图是否有向: {value['graph'].is_directed()}")
+    # print("\n\n#################### 最终输出 ####################")
+    # for key, value in final_output.items():
+    #     print(f"\n--- 结果 for '{key}' ---")
+    #     print("  - 'data' (原始DataFrame):")
+    #     print(value['data'].head())
+    #     print("\n  - 'graph' (PyG图对象):")
+    #     print(value['graph'])
+    #     print(f"    图是否有向: {value['graph'].is_directed()}")

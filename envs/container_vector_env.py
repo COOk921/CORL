@@ -7,11 +7,12 @@ from discriminator.model import Discriminator,PairClassifier
 import time
 import pickle
 import pdb
+import pandas as pd
 
 import torch
 from torch_geometric.data import Data
 from torch_geometric.data import Data
-import torch
+import random
 
 _DATA_CACHE = None
 _MODEL_CACHE = None
@@ -22,7 +23,7 @@ root_dir = "data/container_data.pkl"
 model_path = "./discriminator/model/discriminator.pth"
 
 
-def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode = 'train'):
+def get_data(max_nodes,data_path="./data/processed_container_data_cluster.pkl",  mode = 'train'):
 
     global _DATA_CACHE
     selected_columns = ['Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer']
@@ -30,7 +31,7 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
     if _DATA_CACHE is None:
         print("--- Loading data and deal with graph (will happen only ONCE) ---")
         with open(data_path, 'rb') as f:
-            data = pickle.load(f)
+            data = pd.read_pickle(f) 
       
         data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
         keys = list(data.keys())
@@ -59,8 +60,8 @@ def get_data(max_nodes,data_path="./data/processed_container_data2.pkl",  mode =
 
     
     if mode == 'train':
-        key = np.random.default_rng().choice(keys)
-
+        key = random.choice(keys)
+   
     df = _DATA_CACHE[tuple(key)]
     nodes = df['data'][selected_columns].to_numpy()[:max_nodes]
     # add index column
@@ -147,19 +148,19 @@ def rule_reward(dest_node,prev_node):
     batch,n_traj,dim = dest_node.shape
     reward = np.zeros((batch,n_traj))
 
-    
+    reward.fill(-1)
     """ 规则奖励: yard,bay,col 相同 且layer满足要求 基于reward=0,否则reward=-1 """
-    # condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
-    # condition2 = dest_node[..., -1] < prev_node[..., -1]
-    # valid_condition = condition1 & condition2
-    # reward.fill(-1)
-    # reward[valid_condition] = 0
+    condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
+    condition2 = dest_node[..., -1] < prev_node[..., -1]
+    valid_condition = condition1 & condition2
+    reward[valid_condition] = 0
+    
     """顺序奖励: 根据实际操作顺序,如果正确则reward=0,否则reward=-1"""
     dest_sequence = dest_node[..., -1]  #[batch,n_traj]
     prev_sequence = prev_node[..., -1]
     # 比较 dest_sequence 和 prev_sequence 是否按顺序递增
     valid_condition = (dest_sequence > prev_sequence)
-    reward.fill(-1)
+    
     reward[valid_condition] = 0
 
     return reward 

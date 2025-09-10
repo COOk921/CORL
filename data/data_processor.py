@@ -20,7 +20,7 @@ categorical_features = ['Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_l
 
 def read_pkl(file_path):
     with open(file_path, 'rb') as f:
-        data = pickle.load(f)
+        data = pd.read_pickle(f)
     return data
 
 data = read_pkl(root_dir)
