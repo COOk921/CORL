@@ -23,10 +23,12 @@ root_dir = "data/container_data.pkl"
 model_path = "./discriminator/model/discriminator.pth"
 
 
-def get_data(max_nodes,data_path="./data/processed_container_data_cluster.pkl",  mode = 'train'):
-
+def get_data(max_nodes,current_index,data_path="./data/processed_container_data_cluster.pkl",  mode = 'train'):
+    """
+    mode: train or test
+    """
     global _DATA_CACHE
-    selected_columns = ['Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer']
+    selected_columns = ['order','Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
    
     if _DATA_CACHE is None:
         print("--- Loading data and deal with graph (will happen only ONCE) ---")
@@ -56,30 +58,37 @@ def get_data(max_nodes,data_path="./data/processed_container_data_cluster.pkl", 
     
         _DATA_CACHE = data
     else:
-        keys = list(_DATA_CACHE.keys())
+        keys = list(_DATA_CACHE.keys()) 
 
     
     if mode == 'train':
         key = random.choice(keys)
-   
+    elif mode == 'test':
+       
+        if current_index >= len(keys):
+            current_index = current_index % len(keys)
+        
+        key = keys[current_index]
+    
+
     df = _DATA_CACHE[tuple(key)]
+    
+    
+    valid_nodes = np.minimum(df['data'].shape[0],max_nodes)
     nodes = df['data'][selected_columns].to_numpy()[:max_nodes]
+    
     # add index column
     indices = np.arange(len(nodes)).reshape(-1, 1)
     nodes = np.hstack((indices, nodes))
     # np.random.shuffle(nodes)  
 
-    
-    # if 'edge_attr' not in  df['graph']:
-    #     num_edges =  df['graph'].edge_index.size(1)
-    #     df['graph'].edge_attr = torch.zeros((num_edges, 1), dtype=torch.float)
     graph = df['graph']
      
-    
+   
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
     
-    return nodes,graph
+    return nodes,graph,valid_nodes,key
 
 def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,model_path = model_path):
 
@@ -111,7 +120,6 @@ def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,
         # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
         similarity_score = similarity_score.squeeze().detach().cpu().numpy()
     
-
     return similarity_score
 
 def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
@@ -156,11 +164,11 @@ def rule_reward(dest_node,prev_node):
     reward[valid_condition] = 0
     
     """顺序奖励: 根据实际操作顺序,如果正确则reward=0,否则reward=-1"""
-    dest_sequence = dest_node[..., -1]  #[batch,n_traj]
-    prev_sequence = prev_node[..., -1]
+    dest_sequence = dest_node[..., 0]  #[batch,n_traj]
+    prev_sequence = prev_node[..., 0]
     # 比较 dest_sequence 和 prev_sequence 是否按顺序递增
     valid_condition = (dest_sequence > prev_sequence)
-    
+   
     reward[valid_condition] = 0
 
     return reward 
@@ -184,21 +192,26 @@ class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
         self.max_nodes = 50
         self.n_traj = 50
-        self.dim = 6 + 1  # Default feature dimension, override via kwargs
+        self.dim = 6 + 2  # Default feature dimension, override via kwargs
         self.hidden_dim = 256
         self.eval_data = True
         self.eval_partition = "test"
         self.eval_data_idx = 0
+        self.current_index = 0
         assign_env_config(self, kwargs)
         
+        self.mode = kwargs['mode']
+       
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         obs_dict = {
             "observations": spaces.Box(low=0, high=1, shape=(self.max_nodes, self.dim)),
+            "data_key": spaces.Text(max_length=30),
             "action_mask": spaces.MultiBinary([self.n_traj, self.max_nodes]),
             "first_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "last_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "is_initial_action": spaces.Discrete(1),
+            "valid_mask": spaces.Discrete(1),
             "graph_data": spaces.Graph(
                 node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
                 edge_space=None
@@ -210,8 +223,9 @@ class ContainerVectorEnv(gym.Env):
         self.action_space = spaces.MultiDiscrete([self.max_nodes] * self.n_traj)
         self.reward_space = None
         
+        self.current_index = kwargs.get('index', self.current_index)
         self.reset()
-
+      
     def seed(self, seed):
         np.random.seed(seed)
 
@@ -220,22 +234,25 @@ class ContainerVectorEnv(gym.Env):
         self.num_steps = 0
         self.last = np.zeros(self.n_traj, dtype=int)
         self.first = np.zeros(self.n_traj, dtype=int)
-        
+
         if self.eval_data:
             self._load_orders()
+            # self.current_index += 1
         else:
             self._generate_orders()
-        
         
         self.state = self._update_state()
         self.info = {}
         self.done = False
+        
         return self.state
 
     def _load_orders(self):
-        # Load container features, assuming dataset provides (max_nodes, dim) arrays
-        self.nodes, self.graph = get_data(max_nodes = self.max_nodes, mode='train')
-        
+        self.nodes, self.graph,self.valid_nodes,self.key  = get_data(
+                    max_nodes = self.max_nodes,
+                    current_index = self.current_index, 
+                    mode = self.mode )
+       
         
     def _generate_orders(self):
         self.nodes = np.random.rand( self.max_nodes, self.dim)
@@ -296,16 +313,21 @@ class ContainerVectorEnv(gym.Env):
     def _update_state(self):
         obs = {
             "observations": self.nodes,
+            "data_key": str(self.key),
             "action_mask": self._update_mask(),
             "first_node_idx": self.first,
             "last_node_idx": self.last,
             "is_initial_action": self.num_steps == 0,
-            "graph_data": self.graph  ,
+            "valid_mask": self.valid_nodes,
+            "graph_data": self.graph,
         }
         return obs
 
     def _update_mask(self):
+       
         action_mask = ~self.visited
         action_mask[np.arange(self.n_traj), self.first] |= self.is_all_visited()
+        # action_mask[:, self.valid_nodes:] = False
         return action_mask
+        
 

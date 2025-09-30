@@ -4,6 +4,9 @@ import numpy as np
 from torch_geometric.data import Data
 import torch
 from torch_geometric.data import Data, Batch
+import pandas as pd
+import os
+import shutil
 
 def _count_increasing_pairs(arr):
     """
@@ -178,3 +181,33 @@ def single_batch_graph_data(data):
     data_graph = Data(x=node_features, edge_index=edge_index)  # edge_attr=edge_attr
     # 因为现在只有一个图，不需要再使用 Batch 包装
     return data_graph
+
+
+# 保存预测得到的数据，供后续合并使用
+def save_merged_data(obs, resulting_traj, data_keys, valid_node):
+
+    observations = obs['observations']
+    traj_data = resulting_traj[:, 0, :-1]
+
+    traj_data = traj_data.reshape(observations.shape[0], observations.shape[1], 1) # [batch,node,dim]
+
+    # 对traj_data
+
+    merged_data = np.concatenate([observations, traj_data], axis=-1)
+    result_dir = "./result"
+    if os.path.exists(result_dir):
+        shutil.rmtree(result_dir)  
+    os.makedirs(result_dir, exist_ok=True)  
+
+    columns = ['target','order','Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer','pred']
+
+
+    for i in range(merged_data.shape[0]):
+       
+        df = pd.DataFrame(merged_data[i], columns=columns) # [:valid_node[i]]
+        # df['pred'] = df['pred'].rank(method='dense').astype(int) - 1
+        file_name = os.path.join(result_dir, f"{data_keys[i]}.csv")
+
+        df.to_csv(file_name, index=False)
+        
+   

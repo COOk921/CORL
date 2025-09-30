@@ -86,7 +86,8 @@ class SyncVectorEnv(VectorEnv):
                 observation, data = env.reset(**kwargs)
                 observations.append(observation)
                 data_list.append(data)
-
+        
+        
         self.observations = concatenate(
             self.single_observation_space, observations, self.observations
         )
@@ -122,7 +123,7 @@ class SyncVectorEnv(VectorEnv):
         """
         # [512,20]
         if num_steps - 1 != 0:
-
+           
             # discriminator_reward = get_discriminator_reward(dest_node,prev_node, Config.input_dim, Config.hidden_dim, self.device) - 1 
             # sim_reward = similarity_reward(dest_node,prev_node) - 1 
             r_reward = rule_reward(dest_node,prev_node)

@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler,OneHotEncoder
 import copy
 
 import pdb
+from tqdm import tqdm
 
 # ==============================================================================
 # 步骤 1: 数据准备 - 生成训练用的Pair
@@ -123,7 +124,6 @@ def train_model(model: nn.Module, X_train: np.ndarray, y_train: np.ndarray, epoc
         learning_rate (float): 学习率.
     """
     if X_train.shape[0] == 0:
-        print("    警告: 没有可供训练的pair数据，跳过训练。")
         return
    
     # 转换为PyTorch Tensors
@@ -135,7 +135,6 @@ def train_model(model: nn.Module, X_train: np.ndarray, y_train: np.ndarray, epoc
     criterion = nn.BCELoss()  # 二元交叉熵损失
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    print(f"    开始训练... 共 {epochs} 个 epochs.")
     # 训练循环
     model.train()
     for epoch in range(epochs):
@@ -145,9 +144,9 @@ def train_model(model: nn.Module, X_train: np.ndarray, y_train: np.ndarray, epoc
         loss.backward()
         optimizer.step()
 
-        if (epoch + 1) % 10 == 0:
-            print(f"    Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
-    print("    训练完成.")
+    #     if (epoch + 1) % 10 == 0:
+    #         print(f"    Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+    # print("    训练完成.")
 
 
 # ==============================================================================
@@ -178,7 +177,6 @@ def build_graph_from_pairs(
     """
     
     if X_pairs.shape[0] == 0:
-        print("    警告: 没有pair数据，创建一个空图。")
         x = torch.tensor(df[feature_cols_for_graph].values, dtype=torch.float32)
         edge_index = torch.empty((2, 0), dtype=torch.long)
         return Data(x=x, edge_index=edge_index)
@@ -211,27 +209,23 @@ def build_graph_from_pairs(
         edge_index = torch.empty((2, 0), dtype=torch.long)
         edge_attr = torch.empty((0, 1), dtype=torch.float32)
 
-    
-    # 4. 创建Data对象
-    graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
-    print(f"    图已创建: {graph}")
-    print(f"    根据阈值 {threshold}，共添加了 {edge_index.shape[1]} 条边.")
-   
+    graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)   
     return graph
 
 
-def read_data(file_path: str,continuous_features:list,categorical_features:list) -> dict:
+def read_data(file_path: str,continuous_features:list,categorical_features:list,other_features:list) -> dict:
     with open(file_path, 'rb') as f:
         data = pd.read_pickle(f)
+   
     data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
     
     processed_data_local = {}
     for key, df in data.items():
         processed_df = pd.DataFrame(index=df.index)
-        if 'Unit Nbr' in df.columns:
-            processed_df['Unit Nbr'] = df['Unit Nbr']
-        if 'Time Completed' in df.columns:
-            processed_df['Time Completed'] = df['Time Completed']
+
+        # 复制其他特征
+        for col in other_features:
+            processed_df[col] = df[col]
 
         # 转化连续特征
         local_scaler = StandardScaler()
@@ -285,31 +279,20 @@ def process_data_pipeline(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     idx= 0
-    for key, df in data_dict.items():
-        print(f"\n===== 开始处理 DataFrame: '{key}-{idx}/{len(data_dict)}' =====")
+    for key, df in tqdm(data_dict.items(), desc="Processing data", unit="item"):
         idx+=1
         # 深拷贝以防修改原始数据
         original_df = copy.deepcopy(df)
         processing_df = copy.deepcopy(df)
 
-        # 步骤 1: 创建训练数据
-        print("步骤 1: 创建pair训练数据...")
+
         X_train, y_train,pair_indices = create_pairwise_data(processing_df, feature_cols_for_model, window_size)
         
-        print(f"    为 '{key}' 生成了 {len(y_train)} 个训练pair.")
-
-        # 步骤 2: 初始化模型
-        print("步骤 2: 初始化模型...")
         input_dim = 2 * len(feature_cols_for_model)
         model = PairwiseRankingModel(input_dim=input_dim, hidden_dim=hidden_dim)
-        print(f"    模型已创建，输入维度: {input_dim}")
 
-        # 步骤 3: 训练模型
-        print("步骤 3: 训练模型...")
         train_model(model, X_train, y_train, epochs=epochs, learning_rate=learning_rate,device=device)
 
-        # 步骤 4 & 5: 生成邻接矩阵并创建图
-        print("步骤 4 & 5: 生成邻接矩阵并创建PyG图...")
         pyg_graph = build_graph_from_pairs(
             model=model,
             df=original_df,
@@ -319,15 +302,11 @@ def process_data_pipeline(
             threshold=threshold,
             device=device
         )
-
-        # 步骤 6: 存储结果
+       
         final_results[key] = {
             'data': original_df,
             'graph': pyg_graph
         }
-        print(f"===== DataFrame '{key}' 处理完成 =====")
-
-        
 
     return final_results
 
@@ -336,33 +315,10 @@ def process_data_pipeline(
 # 示例：如何使用
 # ==============================================================================
 if __name__ == '__main__':
-    # --- 1. 准备模拟数据 ---
-    # 假设我们有两个DataFrame, 分别代表两个独立的序列
-    # data_A = pd.DataFrame({
-    #     'feat_1': np.linspace(0, 1, 10),
-    #     'feat_2': np.random.rand(10),
-    #     'feat_3': np.sin(np.linspace(0, np.pi, 10)),
-    #     'text_id': [f'node_{i}' for i in range(10)] # 非计算特征
-    # })
-
-    # data_B = pd.DataFrame({
-    #     'feat_1': np.linspace(1, 0, 15),
-    #     'feat_2': np.random.rand(15),
-    #     'feat_3': np.cos(np.linspace(0, np.pi, 15)),
-    #     'text_id': [f'node_{i}' for i in range(15)]
-    # })
-
-    # # 创建输入的总字典
-    # data = {
-    #     'sequence_A': data_A,
-    #     'sequence_B': data_B
-    # }
-
-    # --- 2. 设定超参数 ---
-    # 你需要手动选择的参数
 
     continuous_features = ['Unit Weight (kg)']
     categorical_features = ['Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer', ]
+    other_features = ['order', 'Unit Nbr','Time Completed']
 
     # 用于模型训练的特征
     FEATURES_FOR_MODEL = ['Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
@@ -380,7 +336,7 @@ if __name__ == '__main__':
     READ_PATH = "./data/container_data_cluster.pkl"
     WRITE_PATH = "./data/processed_container_data_cluster.pkl"
     # 读取数据
-    data = read_data(READ_PATH,continuous_features,categorical_features)
+    data = read_data(READ_PATH,continuous_features,categorical_features,other_features)
 
     # --- 3. 运行主流程 ---
     final_output = process_data_pipeline(

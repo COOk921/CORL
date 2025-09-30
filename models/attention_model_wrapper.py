@@ -208,6 +208,8 @@ class Agent(nn.Module):
         return self.critic(x)
 
     def get_action_and_value_cached(self, x, action=None, state=None):
+
+        
         if state is None:
             state = self.backbone.encode(x)
             x = self.backbone.decode(x, state)
@@ -215,8 +217,9 @@ class Agent(nn.Module):
             x = self.backbone.decode(x, state)
        
         logits = self.actor(x)
-       
+        logits = torch.clamp(logits, min=-1e9)
         probs = torch.distributions.Categorical(logits=logits)
+      
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(x), state
@@ -232,7 +235,7 @@ class stateWrapper:
         
         self.states = {}
         for k, v in states.items():
-            if k != 'graph_data':
+            if k != 'graph_data' and k != 'data_key':
                 self.states[k] = torch.tensor(v, device=self.device)
             else:
                 self.states[k] = v
