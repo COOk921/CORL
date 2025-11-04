@@ -210,4 +210,13 @@ def save_merged_data(obs, resulting_traj, data_keys, valid_node):
 
         df.to_csv(file_name, index=False)
         
-   
+
+def process_merged_data(all_random_row):
+
+    selected_columns = ['order','Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
+    selected_data = all_random_row[selected_columns]
+    
+    
+
+    pdb.set_trace()
+    pass

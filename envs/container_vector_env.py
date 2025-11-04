@@ -34,7 +34,7 @@ def get_data(max_nodes,current_index,data_path="./data/processed_container_data_
         print("--- Loading data and deal with graph (will happen only ONCE) ---")
         with open(data_path, 'rb') as f:
             data = pd.read_pickle(f) 
-      
+
         data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
         keys = list(data.keys())
         for key in keys:
@@ -87,7 +87,7 @@ def get_data(max_nodes,current_index,data_path="./data/processed_container_data_
    
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
-    
+    pdb.set_trace()
     return nodes,graph,valid_nodes,key
 
 def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,model_path = model_path):
