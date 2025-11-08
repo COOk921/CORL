@@ -134,8 +134,8 @@ class Backbone(nn.Module):
         
         
         """embedding + MHA """
-        # embedding = self.embedding(input)
-        # encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
+#         embedding = self.embedding(input)
+#         encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
     
         
         cached_embeddings = self.decoder._precompute(encoded_inputs)  

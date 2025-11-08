@@ -125,10 +125,10 @@ class SyncVectorEnv(VectorEnv):
         if num_steps - 1 != 0:
            
             # discriminator_reward = get_discriminator_reward(dest_node,prev_node, Config.input_dim, Config.hidden_dim, self.device) - 1 
-            sim_reward = similarity_reward(dest_node,prev_node) - 1 
+            # sim_reward = similarity_reward(dest_node,prev_node) - 1 
             r_reward = rule_reward(dest_node,prev_node)
             
-            self._rewards = ( r_reward )/ ( self.n_traj ) 
+            self._rewards = ( r_reward  )/ (self.n_traj ) 
 
         else:
             self._rewards = np.zeros((self.num_envs, self.n_traj), dtype=np.float64)

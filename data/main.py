@@ -143,10 +143,14 @@ def train_model(model: nn.Module, X_train: np.ndarray, y_train: np.ndarray, epoc
         loss = criterion(outputs, y_tensor)
         loss.backward()
         optimizer.step()
+        
+        preds = (outputs > 0.5).float() 
+        correct = (preds == y_tensor).sum().item()  
+        acc = correct / y_tensor.size(0)  
 
         if (epoch + 1) % 5 == 0:
-            print(f"    Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
-    print("    训练完成.")
+            print(f"    Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}, ACC: {acc:.4f}")
+    
 
 
 # ==============================================================================
@@ -219,18 +223,19 @@ def build_graph_from_pairs(
     return graph
 
 
-def read_data(file_path: str,continuous_features:list,categorical_features:list) -> dict:
+def read_data(file_path: str,continuous_features:list,categorical_features:list,other_features:list) -> dict:
     with open(file_path, 'rb') as f:
-        data = pickle.load(f)
+        data = pd.read_pickle(f)
+   
     data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
     
     processed_data_local = {}
     for key, df in data.items():
         processed_df = pd.DataFrame(index=df.index)
-        if 'Unit Nbr' in df.columns:
-            processed_df['Unit Nbr'] = df['Unit Nbr']
-        if 'Time Completed' in df.columns:
-            processed_df['Time Completed'] = df['Time Completed']
+
+        # 复制其他特征
+        for col in other_features:
+            processed_df[col] = df[col]
 
         # 转化连续特征
         local_scaler = StandardScaler()
@@ -249,6 +254,7 @@ def read_data(file_path: str,continuous_features:list,categorical_features:list)
         processed_data_local[key] = processed_df
 
     return processed_data_local
+
 
 # ==============================================================================
 # 步骤 6: 主流程
@@ -417,24 +423,28 @@ if __name__ == '__main__':
     # (这部分保持不变) 
     continuous_features = ['Unit Weight (kg)']
     categorical_features = ['Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer', ]
+    other_features = ['order', 'Unit Nbr','Time Completed']
+
     FEATURES_FOR_MODEL = ['Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
     FEATURES_FOR_GRAPH = ['Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
+    
+    
     D_WINDOW_SIZE = 4
     P_THRESHOLD = 0.6
-    EPOCHS = 100
+    EPOCHS = 200
     LEARNING_RATE = 0.005
-    HIDDEN_DIM = 256
+    HIDDEN_DIM = 512
     
-    READ_PATH = "./data/container_data2.pkl"
-    WRITE_PATH = "./data/processed_container_data2.pkl"
+    READ_PATH = "./data/container_data_cluster.pkl"
+    WRITE_PATH = "./data/processed_container_data_cluster.pkl"
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # --- 2. 读取数据 ---
-    training_data = read_data(READ_PATH, continuous_features, categorical_features)
+    training_data = read_data(READ_PATH, continuous_features, categorical_features,other_features)
 
     # --- 3. 运行训练流程 ---
-    print("--- 阶段 1: 训练全局模型 ---")
+#     print("--- 阶段 1: 训练全局模型 ---")
     trained_global_model = run_training_pipeline(
         data_dict=training_data,
         feature_cols_for_model=FEATURES_FOR_MODEL,
@@ -445,8 +455,10 @@ if __name__ == '__main__':
         device=device
     )
 
-    # (可选) 在这里保存模型
+#     # (可选) 在这里保存模型
     torch.save(trained_global_model.state_dict(), "global_classify_model.pth")
+    
+    
     # (可选) 如果是测试，在这里加载模型
     # trained_global_model.load_state_dict(torch.load("global_ranking_model.pth"))
 

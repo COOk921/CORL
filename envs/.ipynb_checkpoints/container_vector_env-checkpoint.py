@@ -23,7 +23,7 @@ root_dir = "data/container_data.pkl"
 model_path = "./discriminator/model/discriminator.pth"
 
 
-def get_data(max_nodes,current_index,data_path="./data/processed_container_data_cluster.pkl",  mode = 'train'):
+def get_data(max_nodes,current_index,data_path="./data/processed_container_data_cluster.pkl",  mode = 'train'):#_cluster
     """
     mode: train or test
     """
@@ -73,7 +73,7 @@ def get_data(max_nodes,current_index,data_path="./data/processed_container_data_
 
     df = _DATA_CACHE[tuple(key)]
     
-    
+   
     valid_nodes = np.minimum(df['data'].shape[0],max_nodes)
     nodes = df['data'][selected_columns].to_numpy()[:max_nodes]
     
