@@ -421,9 +421,9 @@ if __name__ == "__main__":
         # print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         
-        if update % 50 == 0 or update == num_updates:
+        if update % 30 == 0 or update == num_updates:
             torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
-        if update % 5 == 0 or update == num_updates:
+        if update % 3 == 0 or update == num_updates:
             agent.eval()
             test_obs = test_envs.reset()
 
@@ -485,10 +485,10 @@ if __name__ == "__main__":
             tau_max = np.max(tau_list) if tau_list else 0
             rho_max = np.max(rho_list) if rho_list else 0
             
-            print("tau_mean:", tau_mean)
-            print("rho_mean:", rho_mean)
-            print("tau_max:", tau_max)
-            print("rho_max:", rho_max)
+            # print("tau_mean:", tau_mean)
+            # print("rho_mean:", rho_mean)
+            # print("tau_max:", tau_max)
+            # print("rho_max:", rho_max)
             
         
             avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))

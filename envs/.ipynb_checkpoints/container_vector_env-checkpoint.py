@@ -3,11 +3,16 @@ import numpy as np
 from gym import spaces
 import torch
 
-from .container_data import ContainerDataset
-from discriminator.model import Discriminator
+from discriminator.model import Discriminator,PairClassifier
 import time
 import pickle
 import pdb
+import pandas as pd
+
+import torch
+from torch_geometric.data import Data
+from torch_geometric.data import Data
+import random
 
 _DATA_CACHE = None
 _MODEL_CACHE = None
@@ -18,40 +23,73 @@ root_dir = "data/container_data.pkl"
 model_path = "./discriminator/model/discriminator.pth"
 
 
-def get_data(max_nodes,data_path="./data/processed_container_data.pkl",  mode = 'train'):
-
+def get_data(max_nodes,current_index,data_path="./data/processed_container_data_cluster.pkl",  mode = 'train'):
+    """
+    mode: train or test
+    """
     global _DATA_CACHE
-    selected_columns = ['Unit Weight (kg)','Unit POD',  'from_yard', 'from_bay', 'from_col', 'from_layer']
-
+    selected_columns = ['order','Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
+   
     if _DATA_CACHE is None:
-        print("--- Loading data from file (will happen only ONCE) ---")
+        print("--- Loading data and deal with graph (will happen only ONCE) ---")
         with open(data_path, 'rb') as f:
-            data = pickle.load(f)
+            data = pd.read_pickle(f) 
 
         data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
-
-        _DATA_CACHE = data
         keys = list(data.keys())
+        for key in keys:
+            # 对图进行截取,只保留max_nodes个节点
+            batch_g = data[tuple(key)]['graph'] 
+            batch_g.x = batch_g.x[:max_nodes]
+            batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[0] < max_nodes]
+            batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[1] < max_nodes]
+            
+            current_nodes = batch_g.x.shape[0]
+            if current_nodes < max_nodes:
+                padding_size = max_nodes - current_nodes
+                padding_features = torch.zeros(padding_size, batch_g.x.shape[1], dtype=batch_g.x.dtype, device=batch_g.x.device)
+                batch_g.x = torch.cat([batch_g.x, padding_features], dim=0)
+
+            if 'edge_attr' not in  batch_g:
+                num_edges =  batch_g.edge_index.size(1)
+                batch_g.edge_attr = torch.zeros((num_edges, 1), dtype=torch.float)
+
+            data[tuple(key)]['graph'] = batch_g
+    
+        _DATA_CACHE = data
     else:
-        keys = list(_DATA_CACHE.keys())
+        keys = list(_DATA_CACHE.keys()) 
+
     
     if mode == 'train':
-        key = np.random.default_rng().choice(keys)
-    else:
-        pass
+        key = random.choice(keys)
+    elif mode == 'test':
+       
+        if current_index >= len(keys):
+            current_index = current_index % len(keys)
+        
+        key = keys[current_index]
+    
 
     df = _DATA_CACHE[tuple(key)]
-
     
-    nodes = df[selected_columns].to_numpy()[:max_nodes]
+    
+    valid_nodes = np.minimum(df['data'].shape[0],max_nodes)
+    nodes = df['data'][selected_columns].to_numpy()[:max_nodes]
+    
+    # add index column
+    indices = np.arange(len(nodes)).reshape(-1, 1)
+    nodes = np.hstack((indices, nodes))
+    # np.random.shuffle(nodes)  
 
+    graph = df['graph']
+     
+   
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
-    
-   
-    return nodes
+    return nodes,graph,valid_nodes,key
 
-def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim,device ,model_path = model_path):
+def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,model_path = model_path):
 
     global _MODEL_CACHE
     if _MODEL_CACHE is None:
@@ -61,6 +99,12 @@ def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim,device ,m
             input_dim = input_dim,
             hidden_dim = hidden_dim,
         ).to(device)
+        # model_for_inference = PairClassifier(
+        #     dim = input_dim,
+        #     hidden_dim = hidden_dim,
+        # ).to(device)
+
+
         model_for_inference.load_state_dict(torch.load(model_path))
 
         _MODEL_CACHE = model_for_inference
@@ -75,7 +119,6 @@ def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim,device ,m
         # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
         similarity_score = similarity_score.squeeze().detach().cpu().numpy()
     
-
     return similarity_score
 
 def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
@@ -106,10 +149,28 @@ def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
         
         # 映射到 [0, 1]
         sim[valid_mask] = (cos_sim + 1) / 2
-    
     return sim
 
+def rule_reward(dest_node,prev_node):
+    batch,n_traj,dim = dest_node.shape
+    reward = np.zeros((batch,n_traj))
 
+    reward.fill(-1)
+    """ 规则奖励: yard,bay,col 相同 且layer满足要求 基于reward=0,否则reward=-1 """
+    condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
+    condition2 = dest_node[..., -1] < prev_node[..., -1]
+    valid_condition = condition1 & condition2
+    reward[valid_condition] = 0
+    
+    """顺序奖励: 根据实际操作顺序,如果正确则reward=0,否则reward=-1"""
+    dest_sequence = dest_node[..., 0]  #[batch,n_traj]
+    prev_sequence = prev_node[..., 0]
+    # 比较 dest_sequence 和 prev_sequence 是否按顺序递增
+    valid_condition = (dest_sequence > prev_sequence)
+   
+    reward[valid_condition] = 0
+
+    return reward 
 
 
 def assign_env_config(self, kwargs):
@@ -125,34 +186,45 @@ def read_pkl(file_path):
     return data
 
 
+
 class ContainerVectorEnv(gym.Env):
     def __init__(self, *args, **kwargs):
-        self.max_nodes = 100
-        self.n_traj = 100
-        self.dim = 6  # Default feature dimension, override via kwargs
+        self.max_nodes = 50
+        self.n_traj = 50
+        self.dim = 6 + 2  # Default feature dimension, override via kwargs
         self.hidden_dim = 256
         self.eval_data = True
         self.eval_partition = "test"
         self.eval_data_idx = 0
+        self.current_index = 0
         assign_env_config(self, kwargs)
         
+        self.mode = kwargs['mode']
+       
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         obs_dict = {
             "observations": spaces.Box(low=0, high=1, shape=(self.max_nodes, self.dim)),
+            "data_key": spaces.Text(max_length=30),
             "action_mask": spaces.MultiBinary([self.n_traj, self.max_nodes]),
             "first_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "last_node_idx": spaces.MultiDiscrete([self.max_nodes] * self.n_traj),
             "is_initial_action": spaces.Discrete(1),
+            "valid_mask": spaces.Discrete(1),
+            "graph_data": spaces.Graph(
+                node_space=spaces.Box(low=0, high=1, shape=(self.max_nodes,)), 
+                edge_space=None
+                )
+
         }
 
         self.observation_space = spaces.Dict(obs_dict)
         self.action_space = spaces.MultiDiscrete([self.max_nodes] * self.n_traj)
         self.reward_space = None
         
-
+        self.current_index = kwargs.get('index', self.current_index)
         self.reset()
-
+      
     def seed(self, seed):
         np.random.seed(seed)
 
@@ -164,50 +236,33 @@ class ContainerVectorEnv(gym.Env):
 
         if self.eval_data:
             self._load_orders()
+            # self.current_index += 1
         else:
             self._generate_orders()
+        
         self.state = self._update_state()
         self.info = {}
         self.done = False
+        
         return self.state
 
     def _load_orders(self):
-        # Load container features, assuming dataset provides (max_nodes, dim) arrays
-        #self.nodes = ContainerDataset().get_next_data(max_nodes = self.max_nodes, mode='train')
-        self.nodes = get_data(max_nodes = self.max_nodes, mode='train')
-        
+        self.nodes, self.graph,self.valid_nodes,self.key  = get_data(
+                    max_nodes = self.max_nodes,
+                    current_index = self.current_index, 
+                    mode = self.mode )
+       
         
     def _generate_orders(self):
-        # centers = np.random.rand(2, self.dim)        
-        # cluster_sizes = np.full(2, self.max_nodes // 2)
-        # cluster_sizes[:self.max_nodes % 2] += 1
-
-        # node_clusters = []
-        # for i in range(2):
-        #     # 使用标准差为0.1的高斯噪声，让数据集中在中心附近
-        #     cluster_nodes = np.random.normal(loc=centers[i], scale=0.01, size=(cluster_sizes[i], self.dim))
-        #     # 确保数据在[0, 1]范围内
-        #     cluster_nodes = np.clip(cluster_nodes, 0, 1)
-        #     node_clusters.append(cluster_nodes)
-        
-        # self.nodes = np.vstack(node_clusters)
-
-        #self.nodes = np.random.rand(self.max_nodes, self.dim)
-        #self.nodes = self.dataset.get_next_data(max_nodes = self.max_nodes, mode='train')
-        
         self.nodes = np.random.rand( self.max_nodes, self.dim)
         
-      
-
     def step(self, action):
 
         self._go_to(action)
         self.num_steps += 1
         self.state = self._update_state()
         self.done = (action == self.first) & self.is_all_visited()
-
         self.info
-
         return self.state, self.reward, self.done, self.info # 
 
     def is_all_visited(self):
@@ -228,8 +283,6 @@ class ContainerVectorEnv(gym.Env):
         self.last = destination
         self.visited[np.arange(self.n_traj), destination] = True
     
-
-
     def similarity(self,x, y, eps=1e-8,pad_value=0.0):
       
         dot_product = np.sum(x * y, axis=-1)  # Shape: (n_traj,)
@@ -259,15 +312,21 @@ class ContainerVectorEnv(gym.Env):
     def _update_state(self):
         obs = {
             "observations": self.nodes,
+            "data_key": str(self.key),
             "action_mask": self._update_mask(),
             "first_node_idx": self.first,
             "last_node_idx": self.last,
             "is_initial_action": self.num_steps == 0,
+            "valid_mask": self.valid_nodes,
+            "graph_data": self.graph,
         }
         return obs
 
     def _update_mask(self):
+       
         action_mask = ~self.visited
         action_mask[np.arange(self.n_traj), self.first] |= self.is_all_visited()
+        # action_mask[:, self.valid_nodes:] = False
         return action_mask
+        
 

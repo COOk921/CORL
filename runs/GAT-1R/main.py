@@ -6,6 +6,8 @@ import random
 import shutil
 import time
 from distutils.util import strtobool
+from turtle import begin_fill
+from scipy.stats import kendalltau, spearmanr
 
 import gym
 
@@ -53,7 +55,7 @@ def parse_args():
         help="the path to the definition of the environment, for example `envs.cvrp_vector_env:CVRPVectorEnv` if the `CVRPVectorEnv` class is defined in ./envs/cvrp_vector_env.py")
     parser.add_argument("--total-timesteps", type=int, default=3_000_000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=1e-3,
+    parser.add_argument("--learning-rate", type=float, default=5e-4,
         help="the learning rate of the optimizer")
     parser.add_argument("--weight-decay", type=float, default=0,
         help="the weight decay of the optimizer")
@@ -85,9 +87,9 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--n-traj", type=int, default=20,
+    parser.add_argument("--n-traj", type=int, default=50,
         help="number of trajectories in a vectorized sub-environment")
-    parser.add_argument("--n-test", type=int, default=1,
+    parser.add_argument("--n-test", type=int, default=50,
         help="how many test instance")
     parser.add_argument("--multi-greedy-inference", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="whether to use multiple trajectory greedy inference")
@@ -96,9 +98,6 @@ def parse_args():
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     # fmt: on
     return args
-
-
-from wrappers.recordWrapper import RecordEpisodeStatistics
 
 
 def make_env(env_id, seed, cfg={}):
@@ -159,9 +158,8 @@ if __name__ == "__main__":
         entry_point=args.env_entry_point,
     )
     
-   
     # training env setup
-    envs = SyncVectorEnv([make_env(args.env_id, args.seed + i) for i in range(args.num_envs)])
+    envs = SyncVectorEnv([make_env(args.env_id, args.seed + i, dict(mode="train")) for i in range(args.num_envs)])
     
 
     # evaluation env setup: 1.) from a fix dataset, or 2.) generated with seed
@@ -183,7 +181,7 @@ if __name__ == "__main__":
     logging.basicConfig(filename=f'runs/{run_name}/training.log', level=logging.INFO, format='%(message)s')
     
 
-    test_envs = SyncVectorEnv([make_env(args.env_id, args.seed + args.num_envs + i) for i in range(args.n_test)])
+    test_envs = SyncVectorEnv([make_env(args.env_id, args.seed + args.num_envs + i, dict(mode="test")) for i in range(args.n_test)])
     
     assert isinstance(
         envs.single_action_space, gym.spaces.MultiDiscrete
@@ -216,7 +214,7 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    next_obs = envs.reset()
+    # next_obs = envs.reset()
     next_done = torch.zeros(args.num_envs, args.n_traj).to(device)
     num_updates = args.total_timesteps // args.batch_size
     """
@@ -235,11 +233,12 @@ if __name__ == "__main__":
             frac = 1.0 - (update - 1.0) / num_updates
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
+        
         next_obs = envs.reset()
-       
-        encoder_state = agent.backbone.encode(next_obs)
-        next_done = torch.zeros(args.num_envs, args.n_traj).to(device)
 
+        encoder_state = agent.backbone.encode(next_obs)  # [batch,num_node,hidden_dim]
+
+        next_done = torch.zeros(args.num_envs, args.n_traj).to(device)
         episode_returns = np.zeros((args.num_envs, args.n_traj),dtype=np.float32)
         episode_lengths = np.zeros( args.num_envs , dtype=np.int32)
 
@@ -247,7 +246,7 @@ if __name__ == "__main__":
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
-
+        
             # ALGO LOGIC: action logic
             with torch.no_grad():
                 action, logprob, _, value, _ = agent.get_action_and_value_cached(
@@ -258,7 +257,7 @@ if __name__ == "__main__":
             actions[step] = action
             logprobs[step] = logprob.view(args.num_envs, args.n_traj)
             # TRY NOT TO MODIFY: execute the game and log data.
-
+            
             next_obs, reward, done, info = envs.step(action.cpu().numpy())
             rewards[step] = torch.tensor(reward).to(device)
             next_obs, next_done = next_obs, torch.Tensor(done).to(device)
@@ -305,10 +304,12 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = {
-            k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space
-        }
+        # b_obs = {
+        #     k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space
+        # }
 
+        b_obs = {k: np.concatenate([obs_[k] for obs_ in obs]) for k in envs.single_observation_space if k != "graph_data"}
+      
         # Edited
         b_logprobs = logprobs.reshape(-1, args.n_traj)
         b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
@@ -323,6 +324,7 @@ if __name__ == "__main__":
         flatinds = np.arange(args.batch_size).reshape(args.num_steps, args.num_envs)
 
         clipfracs = []
+        total_time = 0
         for epoch in range(args.update_epochs):
             np.random.shuffle(envinds)
             for start in range(0, args.num_envs, envsperbatch):
@@ -330,15 +332,31 @@ if __name__ == "__main__":
                 mbenvinds = envinds[start:end]  # mini batch env id
                 mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
                 r_inds = np.tile(np.arange(envsperbatch), args.num_steps)
+                
+               
+                # cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
+                # cur_obs = {k: [v[i] for i in mbenvinds] if k == "graph_data" else v[mbenvinds] for k, v in obs[0].items()}
+                cur_obs = {}
+                for k, v in obs[0].items():
+                    if k == "data_key":
+                        continue
+                    if k == "graph_data":
+                        graph_items = []
+                        for i in mbenvinds:
+                            graph_items.append(v[i])
+                        cur_obs[k] = graph_items
+                    else:
+                        cur_obs[k] = v[mbenvinds]
 
-                cur_obs = {k: v[mbenvinds] for k, v in obs[0].items()}
                 encoder_state = agent.backbone.encode(cur_obs)
+                
                 _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value_cached(
                     {k: v[mb_inds] for k, v in b_obs.items()},
                     b_actions.long()[mb_inds],
                     (embedding[r_inds, :] for embedding in encoder_state),
                 )
-                # _, newlogprob, entropy, newvalue = agent.get_action_and_value({k:v[mb_inds] for k,v in b_obs.items()}, b_actions.long()[mb_inds])
+              
+                
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -386,7 +404,7 @@ if __name__ == "__main__":
             if args.target_kl is not None:
                 if approx_kl > args.target_kl:
                     break
-
+        
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
@@ -402,9 +420,10 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         # print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-        if update % 100 == 0 or update == num_updates:
+        
+        if update % 50 == 0 or update == num_updates:
             torch.save(agent.state_dict(), f"runs/{run_name}/ckpt/{update}.pt")
-        if update % 10 == 0 or update == num_updates:
+        if update % 5 == 0 or update == num_updates:
             agent.eval()
             test_obs = test_envs.reset()
 
@@ -425,33 +444,75 @@ if __name__ == "__main__":
                         elif args.problem == 'cvrp':
                             action = torch.arange(1, args.n_traj + 1).repeat(args.n_test, 1)
                 # TRY NOT TO MODIFY: execute the game and log data.
-                test_obs, _, _, test_info = test_envs.step(action.cpu().numpy())
+                test_obs, reward, _, test_info = test_envs.step(action.cpu().numpy())
 
                 trajectories.append(action.cpu().numpy())
 
                 episode_returns += reward
                 episode_lengths += 1 
             
-            resulting_traj = np.array(trajectories)[:,0,0]
-            rehandle_rate = calculation_metrics(resulting_traj, test_obs['observations'][0])
+            """
+            trajectories : Step,(env,traj)
+            episode_returns : (env,traj)
+            test_obs['observations'] : (env, node,obs_dim)
 
+            """
+            resulting_traj = np.array(trajectories).transpose(1, 2, 0)  # (env,traj,step)
+            # rehandle_rate = calculation_metrics(resulting_traj, test_obs['observations'][0])
+          
+
+            target  = np.concatenate([  np.arange(resulting_traj.shape[-1] -1), [0]  ])
+            target = np.tile(target, (resulting_traj.shape[0], resulting_traj.shape[1], 1))  #(env,traj,step)
+
+            tau_list = []
+            rho_list = []
+            for i in range(resulting_traj.shape[0]):
+                # 调整 resulting_traj 中的 0 位置
+                arr = resulting_traj[i,0,:-1]
+                zero_index = np.where(arr == 0)[0][0]
+                new_arr = np.concatenate([arr, arr])[zero_index : zero_index + len(arr)+1]
+                resulting_traj[i,0] = new_arr
+
+                tau, _ = kendalltau(target[i,0,], resulting_traj[i,0,])
+                rho, _ = spearmanr(target[i,0,], resulting_traj[i,0,])
+                
+                if not np.isnan(tau):
+                    tau_list.append(tau)
+                    rho_list.append(rho)
+
+            tau_mean = np.mean(tau_list) if tau_list else 0
+            rho_mean = np.mean(rho_list) if rho_list else 0
+            tau_max = np.max(tau_list) if tau_list else 0
+            rho_max = np.max(rho_list) if rho_list else 0
+            
+            print("tau_mean:", tau_mean)
+            print("rho_mean:", rho_mean)
+            print("tau_max:", tau_max)
+            print("rho_max:", rho_max)
+            
+        
             avg_episodic_return = np.mean(np.mean(episode_returns, axis=1))
             max_episodic_return = np.mean(np.max(episode_returns, axis=1))
             avg_episodic_length = np.mean(episode_lengths)
             
             logging.info(
+                "--------------------------------------------"
                 f"[test] episodic_return={max_episodic_return}\n"
                 f"avg_episodic_return={avg_episodic_return}\n"
                 f"max_episodic_return={max_episodic_return}\n"
                 f"avg_episodic_length={avg_episodic_length}\n"
-                f"rehandle_rate={rehandle_rate}\n"
+                f"tau={tau_mean}\n"
+                f"rho={rho_mean}\n"
+                "--------------------------------------------"
             )
             logging.info("")
 
-            writer.add_scalar("test/episodic_rehandle_rate", rehandle_rate, global_step)
             writer.add_scalar("test/episodic_return_mean", avg_episodic_return, global_step)
             writer.add_scalar("test/episodic_return_max", max_episodic_return, global_step)
             writer.add_scalar("test/episodic_length", avg_episodic_length, global_step)
+            writer.add_scalar("test/tau", tau_mean, global_step)
+            writer.add_scalar("test/rho", rho_mean, global_step)
+
 
     envs.close()
     writer.close()

@@ -87,7 +87,6 @@ def get_data(max_nodes,current_index,data_path="./data/processed_container_data_
    
     if len(nodes) < max_nodes:
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
-    pdb.set_trace()
     return nodes,graph,valid_nodes,key
 
 def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,model_path = model_path):

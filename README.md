@@ -2,7 +2,7 @@
 
 ### Container
 
-python ppo_or.py --num-steps 21 --env-id container-v0 --env-entry-point envs.container_vector_env:ContainerVectorEnv --problem container
+python ppo_or.py --num-steps 51 --env-id container-v0 --env-entry-point envs.container_vector_env:ContainerVectorEnv --problem container
 
 ### TSP
 

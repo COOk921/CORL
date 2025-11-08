@@ -41,8 +41,6 @@ def create_pairwise_data(df: pd.DataFrame, feature_cols: list, window_size: int)
     features = df_shuffled[feature_cols].values
     orders = df_shuffled['ground_truth_order'].values
 
-
-   
     X_pairs = []
     y_labels = []
     pair_original_indices = []
@@ -101,7 +99,7 @@ class PairwiseRankingModel(nn.Module):
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, 1),
-            nn.Sigmoid()  # 输出0到1之间的置信度
+            nn.Sigmoid()  
         )
 
     def forward(self, x):
@@ -124,6 +122,7 @@ def train_model(model: nn.Module, X_train: np.ndarray, y_train: np.ndarray, epoc
         learning_rate (float): 学习率.
     """
     if X_train.shape[0] == 0:
+        print("    警告: 没有可供训练的pair数据，跳过训练。")
         return
    
     # 转换为PyTorch Tensors
@@ -135,18 +134,19 @@ def train_model(model: nn.Module, X_train: np.ndarray, y_train: np.ndarray, epoc
     criterion = nn.BCELoss()  # 二元交叉熵损失
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
+    print(f"    开始训练... 共 {epochs} 个 epochs.")
     # 训练循环
     model.train()
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs), desc="    Training progress"):
         optimizer.zero_grad()
         outputs = model(X_tensor)
         loss = criterion(outputs, y_tensor)
         loss.backward()
         optimizer.step()
 
-    #     if (epoch + 1) % 10 == 0:
-    #         print(f"    Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
-    # print("    训练完成.")
+        if (epoch + 1) % 5 == 0:
+            print(f"    Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+    print("    训练完成.")
 
 
 # ==============================================================================
@@ -177,6 +177,7 @@ def build_graph_from_pairs(
     """
     
     if X_pairs.shape[0] == 0:
+        print("    警告: 没有pair数据，创建一个空图。")
         x = torch.tensor(df[feature_cols_for_graph].values, dtype=torch.float32)
         edge_index = torch.empty((2, 0), dtype=torch.long)
         return Data(x=x, edge_index=edge_index)
@@ -209,23 +210,27 @@ def build_graph_from_pairs(
         edge_index = torch.empty((2, 0), dtype=torch.long)
         edge_attr = torch.empty((0, 1), dtype=torch.float32)
 
-    graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)   
+    
+    # 4. 创建Data对象
+    graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+    print(f"    图已创建: {graph}")
+    print(f"    根据阈值 {threshold}，共添加了 {edge_index.shape[1]} 条边.")
+   
     return graph
 
 
-def read_data(file_path: str,continuous_features:list,categorical_features:list,other_features:list) -> dict:
+def read_data(file_path: str,continuous_features:list,categorical_features:list) -> dict:
     with open(file_path, 'rb') as f:
-        data = pd.read_pickle(f)
-   
+        data = pickle.load(f)
     data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
     
     processed_data_local = {}
     for key, df in data.items():
         processed_df = pd.DataFrame(index=df.index)
-
-        # 复制其他特征
-        for col in other_features:
-            processed_df[col] = df[col]
+        if 'Unit Nbr' in df.columns:
+            processed_df['Unit Nbr'] = df['Unit Nbr']
+        if 'Time Completed' in df.columns:
+            processed_df['Time Completed'] = df['Time Completed']
 
         # 转化连续特征
         local_scaler = StandardScaler()
@@ -248,118 +253,224 @@ def read_data(file_path: str,continuous_features:list,categorical_features:list,
 # ==============================================================================
 # 步骤 6: 主流程
 # ==============================================================================
-
-def process_data_pipeline(
+def build_graphs_for_dataset(
     data_dict: dict,
+    global_model: nn.Module, # 接收训练好的模型
     feature_cols_for_model: list,
     feature_cols_for_graph: list,
     window_size: int,
     threshold: float,
-    epochs: int = 50,
-    learning_rate: float = 0.001,
-    hidden_dim: int = 64
+    device: torch.device
 ) -> dict:
     """
-    处理整个数据字典，为每个DataFrame训练模型并生成图.
-
-    Args:
-        data_dict (dict): key为ID, value为DataFrame的输入字典.
-        feature_cols_for_model (list): 用于训练排序模型的特征列.
-        feature_cols_for_graph (list): 用于最终图节点表示的特征列.
-        window_size (int): 滑动窗口大小D.
-        threshold (float): 生成邻接矩阵的置信度阈值P.
-        epochs (int): 模型训练轮数.
-        learning_rate (float): 学习率.
-        hidden_dim (int): 模型隐藏层维度.
-
-    Returns:
-        dict: 嵌套字典, 包含每个DataFrame的原始数据和生成的图.
+    使用一个预训练的全局模型，为数据字典中的每个DataFrame生成图。
     """
     final_results = {}
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    #确保模型在评估模式
+    global_model.to(device)
+    global_model.eval()
     
     idx= 0
-    for key, df in tqdm(data_dict.items(), desc="Processing data", unit="item"):
+    for key, df in data_dict.items():
+        print(f"\n===== 开始处理 DataFrame: '{key}-{idx}/{len(data_dict)}' =====")
         idx+=1
-        # 深拷贝以防修改原始数据
-        original_df = copy.deepcopy(df)
-        processing_df = copy.deepcopy(df)
-
-
-        X_train, y_train,pair_indices = create_pairwise_data(processing_df, feature_cols_for_model, window_size)
         
-        input_dim = 2 * len(feature_cols_for_model)
-        model = PairwiseRankingModel(input_dim=input_dim, hidden_dim=hidden_dim)
+        original_df = copy.deepcopy(df)
 
-        train_model(model, X_train, y_train, epochs=epochs, learning_rate=learning_rate,device=device)
+        # 步骤 1: 创建推理数据 (使用新函数)
+        print("步骤 1: 创建Inference pair数据...")
+        X_infer_pairs, pair_indices = create_inference_pairs(original_df, feature_cols_for_model, window_size)
+        
+        print(f"    为 '{key}' 生成了 {len(X_infer_pairs)} 个待预测pair.")
 
+        # 步骤 2 & 3: 生成邻接矩阵并创建图 (使用现有函数)
+        print("步骤 2 & 3: 生成邻接矩阵并创建PyG图...")
+        
+        # [cite: 12] build_graph_from_pairs 函数可以复用
+        # 它只需要模型和pair数据，不关心是否是训练数据
         pyg_graph = build_graph_from_pairs(
-            model=model,
+            model=global_model, # [cite: 13] 使用全局模型
             df=original_df,
             feature_cols_for_graph=feature_cols_for_graph,
-            X_pairs=X_train, # 用来预测的pair就是训练的pair
-            pair_original_indices=pair_indices,
+            X_pairs=X_infer_pairs, # [cite: 14] 使用推理pair
+            pair_original_indices=pair_indices, # [cite: 14] 使用推理pair的索引
             threshold=threshold,
             device=device
         )
-       
+
+        # 步骤 4: 存储结果
         final_results[key] = {
-            'data': original_df,
-            'graph': pyg_graph
+            'data': original_df, 
+            'graph': pyg_graph 
         }
+        print(f"===== DataFrame '{key}' 处理完成 =====")
 
     return final_results
 
+
+# new 用于训练 
+def run_training_pipeline(data_dict: dict, feature_cols_for_model: list, window_size: int, epochs: int, learning_rate: float, hidden_dim: int, device: torch.device):
+    """
+    聚合所有DataFrame的pair数据，训练一个全局模型。
+    """
+    print("===== 开始全局模型训练 =====")
+    all_X_train = []
+    all_y_train = []
+    
+    print("步骤 1: 聚合所有DataFrame的pair数据...")
+    for key, df in data_dict.items():
+        processing_df = copy.deepcopy(df)
+        
+        #  使用您现有的函数为每个df生成训练pair
+        X_train, y_train, _ = create_pairwise_data(processing_df, feature_cols_for_model, window_size)
+        
+        if X_train.shape[0] > 0:
+            all_X_train.append(X_train)
+            all_y_train.append(y_train)
+
+    # 检查是否有数据
+    if not all_X_train:
+        print("警告: 没有任何可供训练的pair数据。")
+        return None
+        
+    # 合并为一个大的ndarray
+    global_X_train = np.concatenate(all_X_train, axis=0)
+    global_y_train = np.concatenate(all_y_train, axis=0)
+
+    
+    print(f"    聚合完成。总共 {global_X_train.shape[0]} 个训练pair。")
+
+    # 2. 初始化全局模型
+    print("步骤 2: 初始化全局模型...")
+    input_dim = 2 * len(feature_cols_for_model)
+    global_model = PairwiseRankingModel(input_dim=input_dim, hidden_dim=hidden_dim)
+    print(f"    模型已创建，输入维度: {input_dim}")
+
+    # 3. 训练全局模型 [cite: 9]
+    print("步骤 3: 训练全局模型...")
+    train_model(global_model, global_X_train, global_y_train, epochs=epochs, learning_rate=learning_rate, device=device)
+    
+    print("===== 全局模型训练完成 =====")
+    return global_model
+
+# new 用于创建推理pair 
+def create_inference_pairs(df: pd.DataFrame, feature_cols: list, window_size: int):
+    """
+    为单个DataFrame生成所有窗口内的pair数据 (用于推理).
+    这个版本不打乱数据，也不生成标签。
+
+    Args:
+        df (pd.DataFrame): 输入的DataFrame.
+        feature_cols (list): 用于计算的特征列名列表.
+        window_size (int): 滑动窗口的大小 (D).
+
+    Returns:
+        tuple: 
+               - X_pairs (np.ndarray): N x (2 * num_features) 的数组.
+               - pair_original_indices (np.ndarray): N x 2 的数组，[源, 目标] 索引.
+    """
+    
+    #  (修改点: 删除了 'ground_truth_order' 和 'shuffle')
+    features = df[feature_cols].values
+    # 原始索引
+    original_indices = np.arange(len(df)) 
+
+    X_pairs = []
+    pair_original_indices = []
+
+    # [cite: 3] 滑动窗口生成pairs (在原始顺序上)
+    for i in range(len(df) - window_size + 1):
+        window_features = features[i : i + window_size]
+        window_orders = original_indices[i : i + window_size] # 这里的 "order" 就是索引
+
+        # 第一个node作为锚点
+        anchor_feature = window_features[0]
+        anchor_order = window_orders[0] # 即索引 i
+
+        # [cite: 4] 与窗口内其他node生成pair
+        for j in range(1, window_size):
+            other_feature = window_features[j]
+            other_order = window_orders[j] # 即索引 i+j
+
+            # 特征拼接
+            pair_feature = np.concatenate([anchor_feature, other_feature])
+            X_pairs.append(pair_feature)
+
+            #  (修改点: 不再生成标签 y_labels)
+            
+            # 我们记录 (锚点, 其他点) 的原始索引
+            pair_original_indices.append([anchor_order, other_order]) 
+
+    if not X_pairs:
+        num_features = len(feature_cols)
+        return np.array([]).reshape(0, 2 * num_features), np.array([])
+
+    return np.array(X_pairs), np.array(pair_original_indices)
 
 # ==============================================================================
 # 示例：如何使用
 # ==============================================================================
 if __name__ == '__main__':
 
+    # --- 1. 设定超参数 ---
+    # (这部分保持不变) 
     continuous_features = ['Unit Weight (kg)']
     categorical_features = ['Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer', ]
-    other_features = ['order', 'Unit Nbr','Time Completed']
-
-    # 用于模型训练的特征
     FEATURES_FOR_MODEL = ['Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
-    # 用于最终图节点表示的特征 (可以和模型特征相同或不同)
     FEATURES_FOR_GRAPH = ['Unit Weight (kg)','Unit POD', 'from_yard', 'from_bay', 'from_col', 'from_layer']
+    D_WINDOW_SIZE = 4
+    P_THRESHOLD = 0.6
+    EPOCHS = 100
+    LEARNING_RATE = 0.005
+    HIDDEN_DIM = 256
+    
+    READ_PATH = "./data/container_data2.pkl"
+    WRITE_PATH = "./data/processed_container_data2.pkl"
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # 其他参数
-    D_WINDOW_SIZE = 4       # 滑动窗口大小
-    P_THRESHOLD = 0.5      # 置信度阈值
-    EPOCHS = 40             # 训练轮数
-    LEARNING_RATE = 0.005   # 学习率
-    HIDDEN_DIM = 128        # 模型隐藏层大小
-   
-    # 路径
-    READ_PATH = "./data/container_data_cluster.pkl"
-    WRITE_PATH = "./data/processed_container_data_cluster.pkl"
-    # 读取数据
-    data = read_data(READ_PATH,continuous_features,categorical_features,other_features)
+    # --- 2. 读取数据 ---
+    training_data = read_data(READ_PATH, continuous_features, categorical_features)
 
-    # --- 3. 运行主流程 ---
-    final_output = process_data_pipeline(
-        data_dict=data,
+    # --- 3. 运行训练流程 ---
+    print("--- 阶段 1: 训练全局模型 ---")
+    trained_global_model = run_training_pipeline(
+        data_dict=training_data,
+        feature_cols_for_model=FEATURES_FOR_MODEL,
+        window_size=D_WINDOW_SIZE,
+        epochs=EPOCHS,
+        learning_rate=LEARNING_RATE,
+        hidden_dim=HIDDEN_DIM,
+        device=device
+    )
+
+    # (可选) 在这里保存模型
+    torch.save(trained_global_model.state_dict(), "global_classify_model.pth")
+    # (可选) 如果是测试，在这里加载模型
+    # trained_global_model.load_state_dict(torch.load("global_ranking_model.pth"))
+
+    # --- 4. 运行推理流程 (使用已训练的模型) ---
+    print("\n--- 阶段 2: 使用全局模型构建图 ---")
+    
+    # 备注: 
+    # 在真实场景中，您会在这里加载 *测试* 数据 (test_data)
+    # final_output = build_graphs_for_dataset(test_data, ...)
+    
+    # 这里我们暂时使用 训练 数据来构建图 
+    final_output = build_graphs_for_dataset(
+        data_dict=training_data, 
+        global_model=trained_global_model,
         feature_cols_for_model=FEATURES_FOR_MODEL,
         feature_cols_for_graph=FEATURES_FOR_GRAPH,
         window_size=D_WINDOW_SIZE,
         threshold=P_THRESHOLD,
-        epochs=EPOCHS,
-        learning_rate=LEARNING_RATE,
-        hidden_dim=HIDDEN_DIM
+        device=device
     )
     
+    # --- 5. 保存结果 ---
     with open(WRITE_PATH, 'wb') as f:
         pickle.dump(final_output, f)
+        
+    print(f"处理完成，结果已保存到 {WRITE_PATH}")
 
-    
-    # --- 4. 查看结果 ---
-    # print("\n\n#################### 最终输出 ####################")
-    # for key, value in final_output.items():
-    #     print(f"\n--- 结果 for '{key}' ---")
-    #     print("  - 'data' (原始DataFrame):")
-    #     print(value['data'].head())
-    #     print("\n  - 'graph' (PyG图对象):")
-    #     print(value['graph'])
-    #     print(f"    图是否有向: {value['graph'].is_directed()}")
