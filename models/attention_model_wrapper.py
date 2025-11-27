@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from .nets.attention_model.attention_model import *
-from .nets.attention_model.gat import GAT
+from .nets.attention_model.gat import GAT,ContainerHeteroGAT
 from torch_geometric.data import Data, Batch
 import pdb
 
@@ -106,7 +106,8 @@ class Backbone(nn.Module):
         self.decoder = Decoder(
             embedding_dim, self.embedding.context_dim, n_heads, self.problem, tanh_clipping
         )
-        self.gat = GAT(6, self.embedding_dim,self.embedding_dim, self.embedding_dim)
+        # self.gat = GAT(6, self.embedding_dim,self.embedding_dim, self.embedding_dim)
+        self.gat = ContainerHeteroGAT(6,self.embedding_dim,self.embedding_dim)
 
     def forward(self, obs):
         # state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
@@ -124,10 +125,12 @@ class Backbone(nn.Module):
     def encode(self, obs):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
         input = state.states["observations"][:, :, 1:]      # [batch, num_node, dim]
-        
+
         """图模型 """
         b_graph = obs["graph_data"] 
-        graph = Batch.from_data_list(b_graph)       
+        graph = Batch.from_data_list(b_graph)
+        
+        #out = self.gat(graph.to(self.device))
         out = self.gat(graph.to(self.device))
         embedding = out.view(input.shape[0], input.shape[1], -1)
         encoded_inputs =  embedding

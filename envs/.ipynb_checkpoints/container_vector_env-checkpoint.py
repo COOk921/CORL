@@ -23,7 +23,8 @@ root_dir = "data/container_data.pkl"
 model_path = "./discriminator/model/discriminator.pth"
 
 
-def get_data(max_nodes,current_index,data_path="./data/processed_container_data_cluster.pkl",  mode = 'train'):#_cluster
+
+def get_data(max_nodes,current_index,data_path="./data/processed_container_data_hetero.pkl",  mode = 'train'): 
     """
     mode: train or test
     """
@@ -37,25 +38,61 @@ def get_data(max_nodes,current_index,data_path="./data/processed_container_data_
 
         data = {tuple(key) if isinstance(key, np.ndarray) else key: value for key, value in data.items()}
         keys = list(data.keys())
-        for key in keys:
-            # 对图进行截取,只保留max_nodes个节点
-            batch_g = data[tuple(key)]['graph'] 
-            batch_g.x = batch_g.x[:max_nodes]
-            batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[0] < max_nodes]
-            batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[1] < max_nodes]
+        
+        # for key in keys:
+        #     batch_g = data[tuple(key)]['graph'] 
+        #     batch_g.x = batch_g.x[:max_nodes]
+        #     batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[0] < max_nodes]
+        #     batch_g.edge_index = batch_g.edge_index[:, batch_g.edge_index[1] < max_nodes]
             
-            current_nodes = batch_g.x.shape[0]
+        #     current_nodes = batch_g.x.shape[0]
+        #     if current_nodes < max_nodes:
+        #         padding_size = max_nodes - current_nodes
+        #         padding_features = torch.zeros(padding_size, batch_g.x.shape[1], dtype=batch_g.x.dtype, device=batch_g.x.device)
+        #         batch_g.x = torch.cat([batch_g.x, padding_features], dim=0)
+
+        #     if 'edge_attr' not in  batch_g:
+        #         num_edges =  batch_g.edge_index.size(1)
+        #         batch_g.edge_attr = torch.zeros((num_edges, 1), dtype=torch.float)
+
+        #     data[tuple(key)]['graph'] = batch_g
+        for key in keys:
+            batch_g = data[tuple(key)]['graph'] 
+            node_type = 'container'
+            batch_g[node_type].x = batch_g[node_type].x[:max_nodes]
+            current_nodes = batch_g[node_type].x.shape[0]
+        
+            for edge_type in batch_g.edge_types:
+                src_type, rel, dst_type = edge_type
+                
+                edge_index = batch_g[edge_type].edge_index
+                mask = (edge_index[0] < max_nodes) & (edge_index[1] < max_nodes)
+                batch_g[edge_type].edge_index = edge_index[:, mask]
+                
+                if 'edge_attr' not in batch_g[edge_type] or batch_g[edge_type].edge_attr is None:
+                    num_edges = batch_g[edge_type].edge_index.size(1)
+                    batch_g[edge_type].edge_attr = torch.zeros(
+                        (num_edges, 1), 
+                        dtype=torch.float, 
+                        device=batch_g[node_type].x.device 
+                    )
+                else:
+                   
+                    batch_g[edge_type].edge_attr = batch_g[edge_type].edge_attr[mask]
             if current_nodes < max_nodes:
                 padding_size = max_nodes - current_nodes
-                padding_features = torch.zeros(padding_size, batch_g.x.shape[1], dtype=batch_g.x.dtype, device=batch_g.x.device)
-                batch_g.x = torch.cat([batch_g.x, padding_features], dim=0)
-
-            if 'edge_attr' not in  batch_g:
-                num_edges =  batch_g.edge_index.size(1)
-                batch_g.edge_attr = torch.zeros((num_edges, 1), dtype=torch.float)
-
+                feature_dim = batch_g[node_type].x.shape[1]
+                dtype = batch_g[node_type].x.dtype
+                device = batch_g[node_type].x.device
+                
+                padding_features = torch.zeros(
+                    padding_size, feature_dim, 
+                    dtype=dtype, 
+                    device=device
+                )
+                batch_g[node_type].x = torch.cat([batch_g[node_type].x, padding_features], dim=0)
             data[tuple(key)]['graph'] = batch_g
-    
+            
         _DATA_CACHE = data
     else:
         keys = list(_DATA_CACHE.keys()) 
@@ -157,10 +194,10 @@ def rule_reward(dest_node,prev_node):
 
     reward.fill(-1)
     """ 规则奖励: yard,bay,col 相同 且layer满足要求 基于reward=0,否则reward=-1 """
-    condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
-    condition2 = dest_node[..., -1] < prev_node[..., -1]
-    valid_condition = condition1 & condition2
-    reward[valid_condition] = 0
+    # condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
+    # condition2 = dest_node[..., -1] < prev_node[..., -1]
+    # valid_condition = condition1 & condition2
+    # reward[valid_condition] = 0
     
     """顺序奖励: 根据实际操作顺序,如果正确则reward=0,否则reward=-1"""
     dest_sequence = dest_node[..., 0]  #[batch,n_traj]
@@ -251,6 +288,7 @@ class ContainerVectorEnv(gym.Env):
                     max_nodes = self.max_nodes,
                     current_index = self.current_index, 
                     mode = self.mode )
+        
        
         
     def _generate_orders(self):
@@ -271,7 +309,7 @@ class ContainerVectorEnv(gym.Env):
     def _go_to(self, destination):
         self.dest_node = self.nodes[destination]  # (n_traj, dim)
         self.prev_node = self.nodes[self.last]  # (n_traj, dim)
-      
+        
         """ reward 在文件 syncVectorEnvPomo.py 中计算 """
         if self.num_steps != 0:
             # self.reward =  self.similarity(self.dest_node, self.prev_node) # -self.cost(dest_node, prev_node)   

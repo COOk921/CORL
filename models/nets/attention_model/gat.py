@@ -6,8 +6,9 @@ import pdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
 from torch_geometric.nn import GATConv
+from torch_geometric.data import HeteroData
+from torch_geometric.nn import HeteroConv, GATConv, Linear
 
 
 class GAT(nn.Module):
@@ -47,6 +48,118 @@ class GAT(nn.Module):
 
         # update_node_feature = update_node_feature  + self.node_emb(init_h)
         return update_node_feature
+
+
+# class ContainerHeteroGAT(torch.nn.Module):
+#     def __init__(self, in_channels, hidden_channels, out_channels):
+#         super().__init__()
+        
+#         # 定义异构卷积
+#         self.conv1 = HeteroConv({
+#             # blocks: 强逻辑，使用多头注意力，且不需要加 self-loop (因为是压迫关系)
+#             ('container', 'blocks', 'container'): GATConv(in_channels, hidden_channels, heads=4, add_self_loops=False),
+            
+#             # spatial: 弱逻辑，双向，可以用较少的头
+#             ('container', 'spatial', 'container'): GATConv(in_channels, hidden_channels, heads=2, add_self_loops=True),
+            
+#             # similar: 语义补充
+#             ('container', 'similar', 'container'): GATConv(in_channels, hidden_channels, heads=2, add_self_loops=True),
+#         }, aggr='sum') # 将三种边的聚合结果相加
+        
+        
+#         self.conv_refined = HeteroConv({
+#             ('container', 'blocks', 'container'): GATConv(in_channels, hidden_channels, heads=4, concat=False),
+#             ('container', 'spatial', 'container'): GATConv(in_channels, hidden_channels, heads=4, concat=False),
+#             ('container', 'similar', 'container'): GATConv(in_channels, hidden_channels, heads=4, concat=False),
+#         }, aggr='sum')
+
+#         self.lin = Linear(hidden_channels, out_channels)
+
+#     def forward(self, data):
+#         x_dict = data.x_dict
+#         edge_index_dict = data.edge_index_dict
+        
+#         # 卷积
+#         x_dict = self.conv_refined(x_dict, edge_index_dict)
+#         x = x_dict['container']
+#         x = torch.relu(x)
+        
+#         out = self.lin(x)
+#         return out
+        
+class ContainerHeteroGAT(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super().__init__()
+
+        # --- 第一层 GAT ---
+        # 目标：提取特征，使用多头注意力并拼接 (concat=True)
+        # 注意：为了使用 aggr='sum'，所有分支的输出维度必须一致！
+        # 输出维度 = hidden_channels * heads
+        self.conv1 = HeteroConv({
+            # blocks: 强逻辑，不加自环
+            ('container', 'blocks', 'container'): GATConv(
+                in_channels, hidden_channels, 
+                heads=4, add_self_loops=False, concat=True
+            ),
+            
+            # spatial: 弱逻辑，加自环
+            # 必须改为 heads=4 以匹配 blocks 的输出维度，否则无法 sum
+            ('container', 'spatial', 'container'): GATConv(
+                in_channels, hidden_channels, 
+                heads=4, add_self_loops=True, concat=True
+            ),
+            
+            # similar: 语义补充
+            ('container', 'similar', 'container'): GATConv(
+                in_channels, hidden_channels, 
+                heads=4, add_self_loops=True, concat=True
+            ),
+        }, aggr='sum') 
+
+        # --- 第二层 GAT (Refined) ---
+        # 输入维度是上一层的输出： hidden_channels * 4 (因为上一层 heads=4)
+        # 目标：整合特征，通常最后一层 GNN 不拼接 (concat=False)，做平均
+        self.conv_refined = HeteroConv({
+            ('container', 'blocks', 'container'): GATConv(
+                hidden_channels * 4, hidden_channels, 
+                heads=4, concat=False, add_self_loops=False
+            ),
+            ('container', 'spatial', 'container'): GATConv(
+                hidden_channels * 4, hidden_channels, 
+                heads=4, concat=False, add_self_loops=True
+            ),
+            ('container', 'similar', 'container'): GATConv(
+                hidden_channels * 4, hidden_channels, 
+                heads=4, concat=False, add_self_loops=True
+            ),
+        }, aggr='sum')
+
+        self.lin = Linear(hidden_channels, out_channels)
+
+    def forward(self, data):
+        # Data 已经是 HeteroData
+        x_dict = data.x_dict
+        edge_index_dict = data.edge_index_dict
+        
+        
+        # 1. 第一层卷积
+        x_dict = self.conv1(x_dict, edge_index_dict)
+        x_dict = {key: torch.relu(x) for key, x in x_dict.items()}
+        
+        # 3. 第二层卷积
+        x_dict = self.conv_refined(x_dict, edge_index_dict)
+        
+        # 4. 提取 container 节点的特征
+        x = x_dict['container']
+
+        # 5. 再次激活 (可选，看你是否需要在 Linear 前再做一次非线性)
+        x = torch.relu(x)
+        
+        # 6. 输出层
+        out = self.lin(x)
+        
+        return out
+
 
 
 # from torch_geometric.nn import GCNConv

@@ -53,7 +53,7 @@ def parse_args():
         help="the id of the environment")
     parser.add_argument("--env-entry-point", type=str, default="envs.cvrp_vector_env:CVRPVectorEnv",
         help="the path to the definition of the environment, for example `envs.cvrp_vector_env:CVRPVectorEnv` if the `CVRPVectorEnv` class is defined in ./envs/cvrp_vector_env.py")
-    parser.add_argument("--total-timesteps", type=int, default=3_000_000,
+    parser.add_argument("--total-timesteps", type=int, default=10_000_000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=5e-4,
         help="the learning rate of the optimizer")
@@ -89,7 +89,7 @@ def parse_args():
         help="the target KL divergence threshold")
     parser.add_argument("--n-traj", type=int, default=50,
         help="number of trajectories in a vectorized sub-environment")
-    parser.add_argument("--n-test", type=int, default=50,
+    parser.add_argument("--n-test", type=int, default=30,
         help="how many test instance")
     parser.add_argument("--multi-greedy-inference", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="whether to use multiple trajectory greedy inference")
