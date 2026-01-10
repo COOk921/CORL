@@ -22,3 +22,6 @@ python ppo_or.py --num-steps 60 --env-id cvrp-v0 --env-entry-point envs.cvrp_vec
 python ppo_or.py ... --track
 ```
 
+首先结束默认启动的TensorBoard进程，执行命令：ps -ef | grep tensorboard | awk '{print $2}' | xargs kill -9 
+在终端中执行以下命令启动TensorBoard
+$ tensorboard --port 6007 --logdir ./runs

@@ -29,12 +29,15 @@ from scipy.stats import kendalltau
 if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt_path = 'C:/Users/ytn30/Desktop/runs/聚类/原始数据-顺序规则奖励/ckpt/114.pt'
+    ckpt_path = './runs/container-v0__ppo_or__2025-11-27_20_10/ckpt/270.pt' #
+    
     agent = Agent(device=device, name='container').to(device)
-    agent.load_state_dict(torch.load(ckpt_path))
+    # agent.load_state_dict(torch.load(ckpt_path))
+    agent.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu')))
+    
     env_id = 'container-v0'
     num_steps = 51
-    num_envs = 100
+    num_envs = 10
     n_traj = 1
 
     env_entry_point = 'envs.container_vector_env:ContainerVectorEnv'
@@ -115,9 +118,8 @@ if __name__ == "__main__":
             tau_list.append(tau)
             rho_list.append(rho)
 
+
     pdb.set_trace()
-
-
     tau_mean = np.mean(tau_list) if tau_list else 0
     rho_mean = np.mean(rho_list) if rho_list else 0
     tau_max = np.max(tau_list) if tau_list else 0

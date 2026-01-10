@@ -4,8 +4,7 @@ from typing import List, Optional, Union
 import numpy as np
 from gym.vector.utils import concatenate, create_empty_array, iterate
 from gym.vector.vector_env import VectorEnv
-from envs.container_vector_env import _MODEL_CACHE,get_discriminator_reward, rule_reward,similarity_reward
-from discriminator.config import Config
+from envs.container_vector_env import _MODEL_CACHE, rule_reward,similarity_reward
 
 import pdb
 
@@ -116,16 +115,10 @@ class SyncVectorEnv(VectorEnv):
             infos.append(info)
         
         """ 
-        余弦相似度: [0, 1] 值越大 相似度越高
-        判别器奖励: [0, 1] 值越大 奖励越高
-
-        缩放奖励到[-1, 0]
+        关键：设计奖励，奖励函数在./envs/container_vector_env.py中的rule_reward函数中定义
         """
         # [512,20]
         if num_steps - 1 != 0:
-           
-            # discriminator_reward = get_discriminator_reward(dest_node,prev_node, Config.input_dim, Config.hidden_dim, self.device) - 1 
-            # sim_reward = similarity_reward(dest_node,prev_node) - 1 
             r_reward = rule_reward(dest_node,prev_node)
             
             self._rewards = ( r_reward  )/ (self.n_traj ) 

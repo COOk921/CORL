@@ -2,8 +2,6 @@ import gym
 import numpy as np
 from gym import spaces
 import torch
-
-from discriminator.model import Discriminator,PairClassifier
 import time
 import pickle
 import pdb
@@ -20,7 +18,6 @@ _MODEL_CACHE = None
 
 
 root_dir = "data/container_data.pkl"
-model_path = "./discriminator/model/discriminator.pth"
 
 
 
@@ -126,37 +123,7 @@ def get_data(max_nodes,current_index,data_path="./data/processed_container_data_
         nodes = np.pad(nodes, ((0, max_nodes - len(nodes)), (0, 0)), mode='constant')
     return nodes,graph,valid_nodes,key
 
-def get_discriminator_reward(dest_node,prev_node,input_dim, hidden_dim, device ,model_path = model_path):
 
-    global _MODEL_CACHE
-    if _MODEL_CACHE is None:
-        print("--- Loading model from file (will happen only ONCE) ---")
-        
-        model_for_inference = Discriminator(
-            input_dim = input_dim,
-            hidden_dim = hidden_dim,
-        ).to(device)
-        # model_for_inference = PairClassifier(
-        #     dim = input_dim,
-        #     hidden_dim = hidden_dim,
-        # ).to(device)
-
-
-        model_for_inference.load_state_dict(torch.load(model_path))
-
-        _MODEL_CACHE = model_for_inference
-   
-    _MODEL_CACHE.eval()
-
-    with torch.no_grad():
-        dest_node = torch.from_numpy(dest_node).float().to(device)
-        prev_node = torch.from_numpy(prev_node).float().to(device)
-
-        similarity_score = _MODEL_CACHE(dest_node, prev_node)
-        # similarity_score = torch.round(similarity_score).squeeze().detach().cpu().numpy()
-        similarity_score = similarity_score.squeeze().detach().cpu().numpy()
-    
-    return similarity_score
 
 def similarity_reward( x, y, eps=1e-8, pad_value=0.0):
     dot_product = np.sum(x * y, axis=-1)  # Shape: [batch, n_traj]
@@ -194,16 +161,16 @@ def rule_reward(dest_node,prev_node):
 
     reward.fill(-1)
     """ 规则奖励: yard,bay,col 相同 且layer满足要求 基于reward=0,否则reward=-1 """
-    # condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
-    # condition2 = dest_node[..., -1] < prev_node[..., -1]
-    # valid_condition = condition1 & condition2
-    # reward[valid_condition] = 0
+    condition1 = np.all(dest_node[..., 2:5] == prev_node[..., 2:5], axis=-1)
+    condition2 = dest_node[..., -1] < prev_node[..., -1]
+    valid_condition = condition1 & condition2
+    reward[valid_condition] = 0
     
     """顺序奖励: 根据实际操作顺序,如果正确则reward=0,否则reward=-1"""
     dest_sequence = dest_node[..., 0]  #[batch,n_traj]
     prev_sequence = prev_node[..., 0]
     # 比较 dest_sequence 和 prev_sequence 是否按顺序递增
-    valid_condition = (dest_sequence > prev_sequence)
+    valid_condition = (dest_sequence >= prev_sequence)
    
     reward[valid_condition] = 0
 
@@ -310,10 +277,10 @@ class ContainerVectorEnv(gym.Env):
         self.dest_node = self.nodes[destination]  # (n_traj, dim)
         self.prev_node = self.nodes[self.last]  # (n_traj, dim)
         
-        """ reward 在文件 syncVectorEnvPomo.py 中计算 """
+        """ reward 在文件 syncVectorEnvPomo.py 中计算，这里不给奖励"""
         if self.num_steps != 0:
-            # self.reward =  self.similarity(self.dest_node, self.prev_node) # -self.cost(dest_node, prev_node)   
-            self.reward = 0  #get_discriminator_reward(self.dest_node, self.prev_node, self.dim, self.hidden_dim, self.device)
+            
+            self.reward = 0 
         else:
             self.reward = np.zeros(self.n_traj)
             self.first = destination

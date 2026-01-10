@@ -126,19 +126,17 @@ class Backbone(nn.Module):
         state = stateWrapper(obs, device=self.device, problem=self.problem.NAME)
         input = state.states["observations"][:, :, 1:]      # [batch, num_node, dim]
 
-        """图模型 """
-        b_graph = obs["graph_data"] 
-        graph = Batch.from_data_list(b_graph)
+        """关键：下面模型和MHA需要2选1"""
+        """choice 1 图模型 """
+        # b_graph = obs["graph_data"] 
+        # graph = Batch.from_data_list(b_graph)
+        # out = self.gat(graph.to(self.device))
+        # embedding = out.view(input.shape[0], input.shape[1], -1)
+        # encoded_inputs =  embedding
         
-        #out = self.gat(graph.to(self.device))
-        out = self.gat(graph.to(self.device))
-        embedding = out.view(input.shape[0], input.shape[1], -1)
-        encoded_inputs =  embedding
-        
-        
-        """embedding + MHA """
-#         embedding = self.embedding(input)
-#         encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
+        """choice 2 MHA """
+        embedding = self.embedding(input)
+        encoded_inputs, _ = self.encoder(embedding)     # [batch,num_node,hidden_dim]
     
         
         cached_embeddings = self.decoder._precompute(encoded_inputs)  
